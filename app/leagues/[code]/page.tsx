@@ -40,7 +40,7 @@ export default async function LeaguePage({ params, searchParams }: { params: Pro
         </div>
       ) : isUnavailable(matches) ? <div className="mb-6"><UnavailableNote u={matches} /></div> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Panel title={t("leagues.standings")} right={
           <div className="flex gap-1" role="group" aria-label={t("leagues.tableSplit")}>
             {(["total", "home", "away"] as const).map((k) => (

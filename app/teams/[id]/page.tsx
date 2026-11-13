@@ -48,7 +48,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         <Kpi label={t("stat.xg")} value={fmt.num(s.xgFor)} hint={s.xgFor === null ? t("common.notSupplied") : undefined} />
         <Kpi label={t("stat.xga")} value={fmt.num(s.xgAgainst)} tone="azure" />
       </div>
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           <Panel title={t("teams.goalsTrend")} right={!isUnavailable(recent) ? <SourceBadge source={recent.source} /> : undefined}>
             {isUnavailable(recent) ? <UnavailableNote u={recent} /> : <GoalsTrendChart data={trend} />}

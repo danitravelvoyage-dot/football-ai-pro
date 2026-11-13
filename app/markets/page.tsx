@@ -27,7 +27,7 @@ export default async function MarketsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader title={t("markets.title")} subtitle={t("markets.subtitle")} right={<SourceBadge source={feed.source} />} />
-      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <Panel title={t("markets.selectMatch")} className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {upcoming.length === 0 ? <p className="text-sm text-mute">{t("dash.noMatches")}</p> : (
             <ul className="space-y-1.5">

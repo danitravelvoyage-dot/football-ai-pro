@@ -56,7 +56,7 @@ export default async function Dashboard() {
         <Kpi label={t("dash.kpi.tracked")} value={fmt.int(tracked)} tone="slate" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <Panel title={<span className="flex items-center gap-2"><Radio className="h-4 w-4 text-rose-400" aria-hidden />{t("dash.live")}</span>}>
             {!feed.liveSupported ? (
