@@ -82,6 +82,8 @@ export const ar: Dict = {
   "common.finished": "منتهية",
   "common.scheduled": "مجدولة",
   "common.kickoff": "موعد البداية",
+  "common.timeTbc": "غير مؤكد",
+  "common.timeTbcHint": "موعد انطلاق المباراة لم يُؤكَّد بعد؛ المزود يعرض وقتًا مؤقتًا.",
   "common.matchday": "الجولة",
   "common.expected": "المتوقع",
   "common.line": "الخط",
@@ -95,7 +97,7 @@ export const ar: Dict = {
   "common.bookmaker": "شركة المراهنات",
   "common.result": "النتيجة",
 
-  "status.SCHEDULED": "مجدولة",
+  "status.SCHEDULED": "الوقت غير مؤكد",
   "status.TIMED": "مجدولة",
   "status.IN_PLAY": "مباشر",
   "status.PAUSED": "استراحة",

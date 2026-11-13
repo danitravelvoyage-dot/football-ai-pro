@@ -9,9 +9,9 @@ describe("demo dataset", () => {
   it("never simulates live or future results", () => {
     const today = new Date("2026-11-13T00:00:00Z").getTime();
     for (const m of set.matches) {
-      expect(["FINISHED", "SCHEDULED"]).toContain(m.status);
+      expect(["FINISHED", "TIMED"]).toContain(m.status);
       if (new Date(m.utcDate).getTime() >= today) {
-        expect(m.status).toBe("SCHEDULED");
+        expect(m.status).toBe("TIMED");
         expect(m.score.fullTime.home).toBeNull();
       }
     }
@@ -30,14 +30,14 @@ describe("demo dataset", () => {
     for (const r of pl) expect(r.points).toBe(3 * r.won + r.draw);
   });
   it("demo odds carry a bookmaker margin", () => {
-    const m = set.matches.find((x) => x.status === "SCHEDULED")!;
+    const m = set.matches.find((x) => x.status === "TIMED")!;
     const books = demoOdds(m, set);
     const h2h = books[0].markets.find((k) => k.key === "h2h")!;
     const over = h2h.outcomes.reduce((s, o) => s + 1 / o.price, 0) - 1;
     expect(over).toBeGreaterThan(0.01);
   });
   it("model runs on every upcoming demo match with probabilities summing to 1", () => {
-    for (const m of set.matches.filter((x) => x.status === "SCHEDULED").slice(0, 30)) {
+    for (const m of set.matches.filter((x) => x.status === "TIMED").slice(0, 30)) {
       const pool = set.matches.filter((x) => x.competition.code === m.competition.code);
       const p = poissonDcModel.predict({ match: m, asOf: new Date("2026-11-13T00:00:00Z"), leagueMatches: pool, homeRecent: [], awayRecent: [], h2h: [] });
       expect(Math.abs(p.oneXTwo.home + p.oneXTwo.draw + p.oneXTwo.away - 1)).toBeLessThan(1e-9);
@@ -53,10 +53,10 @@ describe("demo dataset", () => {
 import { resolveDemoMatch } from "@/services/providers/demoData";
 describe("demo resolution", () => {
   const set = getDemoDataset(new Date("2026-11-13T10:00:00Z"));
-  const m = set.matches.find((x) => x.status === "SCHEDULED")!;
+  const m = set.matches.find((x) => x.status === "TIMED")!;
   it("stays scheduled before kickoff + 2h and is deterministic after", () => {
     const k = new Date(m.utcDate).getTime();
-    expect(resolveDemoMatch(m, set, k + 3600_000).status).toBe("SCHEDULED");
+    expect(resolveDemoMatch(m, set, k + 3600_000).status).toBe("TIMED");
     const r1 = resolveDemoMatch(m, set, k + 3 * 3600_000);
     const r2 = resolveDemoMatch(m, set, k + 5 * 3600_000);
     expect(r1.status).toBe("FINISHED");

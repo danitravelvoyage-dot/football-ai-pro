@@ -128,7 +128,7 @@ function simulate(
     id,
     competition,
     utcDate,
-    status: finished ? "FINISHED" : "SCHEDULED",
+    status: finished ? "FINISHED" : "TIMED", // demo kick-off times are fixed
     matchday,
     stage: competition.type === "LEAGUE" ? "REGULAR_SEASON" : "LEAGUE_STAGE",
     homeTeam: strip(home),
@@ -252,7 +252,7 @@ const resolved = new Map<string, Match>();
  * result (seeded by match id). Matches are never shown as in-play: DEMO does not simulate live play.
  */
 export function resolveDemoMatch(m: Match, set: DemoDataset, now = Date.now()): Match {
-  if (m.status !== "SCHEDULED" || now < new Date(m.utcDate).getTime() + 2 * 3600_000) return m;
+  if (m.status !== "TIMED" || now < new Date(m.utcDate).getTime() + 2 * 3600_000) return m;
   const hit = resolved.get(m.id);
   if (hit) return hit;
   const h = set.teams.get(m.homeTeam.id), a = set.teams.get(m.awayTeam.id);

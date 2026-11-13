@@ -27,7 +27,11 @@ export function MatchCard({ match, probs }: { match: Match; probs?: OneXTwo | nu
         </div>
         {!showScore && (
           <div className="shrink-0 rounded-md bg-ink-800 px-2.5 py-1.5 text-center">
-            <div className="num text-sm font-semibold text-white" dir="ltr">{fmt.time(match.utcDate)}</div>
+            {match.status === "SCHEDULED" ? (
+              <div className="text-xs font-semibold text-gold-300" title={t("common.timeTbcHint")}>{t("common.timeTbc")}</div>
+            ) : (
+              <div className="num text-sm font-semibold text-white" dir="ltr">{fmt.time(match.utcDate)}</div>
+            )}
             <div className="text-[10px] text-mute">{fmt.date(match.utcDate)}</div>
           </div>
         )}

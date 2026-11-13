@@ -37,7 +37,7 @@ export default async function MarketsPage({ searchParams }: { searchParams: Prom
                   <li key={m.id}>
                     <Link href={`/markets?match=${m.id}`} aria-current={m.id === selectedId ? "true" : undefined}
                       className={clsx("block rounded-lg border p-2.5 text-xs transition", m.id === selectedId ? "border-emerald-500/50 bg-emerald-500/5" : "border-line hover:border-emerald-500/30")}>
-                      <div className="flex items-center justify-between text-[10px] text-mute"><span dir="ltr">{m.competition.code}</span><span className="num">{fmt.date(m.utcDate)} {fmt.time(m.utcDate)}</span></div>
+                      <div className="flex items-center justify-between text-[10px] text-mute"><span dir="ltr">{m.competition.code}</span><span className="num">{fmt.date(m.utcDate)} {m.status === "SCHEDULED" ? t("common.timeTbc") : fmt.time(m.utcDate)}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 font-medium"><Crest team={m.homeTeam} size={16} /><span className="truncate">{m.homeTeam.shortName}</span><span className="text-mute">–</span><span className="truncate">{m.awayTeam.shortName}</span></div>
                       {p && <div className="mt-1.5"><ProbBar {...p.oneXTwo} compact /></div>}
                     </Link>

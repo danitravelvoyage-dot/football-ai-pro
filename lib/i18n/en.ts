@@ -80,6 +80,8 @@ export const en = {
   "common.finished": "Finished",
   "common.scheduled": "Scheduled",
   "common.kickoff": "Kick-off",
+  "common.timeTbc": "Time TBC",
+  "common.timeTbcHint": "The kick-off time is not confirmed yet; the provider lists a placeholder time.",
   "common.matchday": "Matchday",
   "common.expected": "Expected",
   "common.line": "Line",
@@ -93,7 +95,7 @@ export const en = {
   "common.bookmaker": "Bookmaker",
   "common.result": "Result",
 
-  "status.SCHEDULED": "Scheduled",
+  "status.SCHEDULED": "Time TBC",
   "status.TIMED": "Scheduled",
   "status.IN_PLAY": "Live",
   "status.PAUSED": "Half-time",

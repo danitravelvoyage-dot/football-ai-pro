@@ -77,7 +77,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <header className="panel mb-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-xs text-mute">
           <span><span dir="ltr">{m.competition.name}</span>{m.matchday ? ` · ${t("common.matchday")} ${m.matchday}` : ""}</span>
-          <span className="flex items-center gap-2"><StatusPill status={m.status} /><span className="num">{fmt.dateLong(m.utcDate)} · {fmt.time(m.utcDate)}</span></span>
+          <span className="flex items-center gap-2"><StatusPill status={m.status} /><span className="num">{fmt.dateLong(m.utcDate)} · {m.status === "SCHEDULED" ? t("common.timeTbc") : fmt.time(m.utcDate)}</span></span>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-6 md:px-8">
           <Link href={`/teams/${encodeURIComponent(m.homeTeam.id)}`} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:text-start">
@@ -88,7 +88,11 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             {ft.home !== null && ft.away !== null ? (
               <div className="num text-3xl font-bold text-white md:text-4xl" dir="ltr">{ft.home} – {ft.away}</div>
             ) : (
-              <div className="num text-2xl font-semibold text-slate-300" dir="ltr">{fmt.time(m.utcDate)}</div>
+              m.status === "SCHEDULED" ? (
+                <div className="text-lg font-semibold text-gold-300" title={t("common.timeTbcHint")}>{t("common.timeTbc")}</div>
+              ) : (
+                <div className="num text-2xl font-semibold text-slate-300" dir="ltr">{fmt.time(m.utcDate)}</div>
+              )
             )}
             {m.score.halfTime.home !== null && <div className="num mt-1 text-[11px] text-mute" dir="ltr">HT {m.score.halfTime.home}-{m.score.halfTime.away}</div>}
           </div>
