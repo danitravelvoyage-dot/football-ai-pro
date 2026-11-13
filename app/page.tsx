@@ -15,14 +15,14 @@ export default async function Dashboard() {
   const { t, fmt, tz } = await getI18n();
   const today = ymdInTz(new Date(), tz);
   const tomorrow = addDaysYmd(today, 1);
-  const feed = await getMatchesBetween(today, addDaysYmd(today, 7), tz);
+  const feed = await getMatchesBetween(today, addDaysYmd(today, 10), tz);
   const byDay = (d: string) => feed.matches.filter((m) => ymdInTz(new Date(m.utcDate), tz) === d);
   const todays = byDay(today);
   const tomorrows = byDay(tomorrow);
   const live = feed.matches.filter((m) => LIVE_STATUSES.has(m.status));
   const later = feed.matches.filter((m) => ymdInTz(new Date(m.utcDate), tz) > tomorrow);
   const [preds, scan, tracked] = await Promise.all([
-    quickPredictions([...todays, ...tomorrows, ...later.slice(0, 12)]),
+    quickPredictions([...todays, ...tomorrows, ...later.slice(0, 30)]),
     scanMarkets([...todays, ...tomorrows]),
     getStore().list().then((x) => x.length).catch(() => 0),
   ]);
@@ -67,7 +67,7 @@ export default async function Dashboard() {
           <Panel title={`${t("dash.tomorrow")} · ${fmt.date(tomorrow + "T12:00:00Z")}`} right={<Link className="link text-xs" href={`/matches?date=${tomorrow}`}>{t("common.viewAll")}</Link>}>
             {grid(tomorrows)}
           </Panel>
-          <Panel title={t("dash.upcoming")}>{grid(later.slice(0, 12))}</Panel>
+          <Panel title={t("dash.upcoming")}>{grid(later.slice(0, 30))}</Panel>
         </div>
 
         <aside className="space-y-6">
