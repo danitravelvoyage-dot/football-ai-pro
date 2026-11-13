@@ -8,7 +8,7 @@ import { getCompetition } from "@/lib/competitions";
 import { env } from "@/lib/env";
 import { RateLimitedError } from "@/lib/rateLimit";
 import type { BookmakerOdds, Match, MatchOdds, Maybe } from "@/types";
-import { getJson, ProviderError } from "./http";
+import { fetchJson, ProviderError } from "./http";
 import type { OddsProvider } from "./types";
 import { teamsMatch } from "./nameMatch";
 
@@ -28,6 +28,17 @@ interface OaEvent {
   }[];
 }
 
+/** Free plan = 500 credits/month; one league request with h2h+totals costs 2 credits. */
+const ODDS_TTL_SEC = 24 * 3600; // one request per competition per day, shared by all visitors
+const ODDS_WINDOW_MS = 48 * 3600_000; // only fetch odds for matches kicking off within 48 hours
+const MIN_REMAINING = 40; // stop calling before the monthly quota is exhausted
+let quotaBlockedUntil = 0;
+
+function startOfNextMonthUtc(): number {
+  const d = new Date();
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+}
+
 export class OddsApiProvider implements OddsProvider {
   readonly name = NAME;
   constructor(private key: string) {}
@@ -35,11 +46,21 @@ export class OddsApiProvider implements OddsProvider {
   async getOdds(match: Match): Promise<Maybe<MatchOdds>> {
     const sport = getCompetition(match.competition.code)?.oddsApiKey;
     if (!sport) return { unavailable: true, reasonKey: "odds.leagueNotCovered", provider: NAME };
+    const kickoffMs = new Date(match.utcDate).getTime();
+    if (kickoffMs - Date.now() > ODDS_WINDOW_MS) return { unavailable: true, reasonKey: "odds.tooEarly", provider: NAME };
+    if (Date.now() < quotaBlockedUntil) return { unavailable: true, reasonKey: "odds.quota", provider: NAME };
     const path = `/sports/${sport}/odds?regions=${encodeURIComponent(env.oddsRegions)}&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso`;
     try {
-      const r = await cached(`odds:${path}`, 30 * 60_000, () =>
-        getJson<OaEvent[]>(NAME, `${BASE}${path}&apiKey=${encodeURIComponent(this.key)}`, {}, 5),
+      const r0 = await cached(`odds:${path}`, ODDS_TTL_SEC * 1000, () =>
+        fetchJson<OaEvent[]>(NAME, `${BASE}${path}&apiKey=${encodeURIComponent(this.key)}`, {}, {
+          revalidateSec: ODDS_TTL_SEC,
+          onHeaders: (h) => {
+            const remaining = Number(h.get("x-requests-remaining"));
+            if (Number.isFinite(remaining) && h.has("x-requests-remaining") && remaining < MIN_REMAINING) quotaBlockedUntil = startOfNextMonthUtc();
+          },
+        }),
       );
+      const r = { value: r0.value.data, cached: r0.cached || Date.now() - Date.parse(r0.value.fetchedAt) > 5000, storedAt: Date.parse(r0.value.fetchedAt) };
       const kickoff = new Date(match.utcDate).getTime();
       const ev = r.value.find(
         (e) =>

@@ -7,7 +7,7 @@ import { cached } from "@/lib/cache";
 import { getCompetition } from "@/lib/competitions";
 import { env } from "@/lib/env";
 import type { Lineup, Match, Maybe, PlayerAvailability } from "@/types";
-import { getJson } from "./http";
+import { fetchJson } from "./http";
 import { teamsMatch } from "./nameMatch";
 import type { TeamNewsProvider } from "./types";
 
@@ -41,7 +41,11 @@ export class ApiFootballProvider implements TeamNewsProvider {
 
   private async call<T>(path: string, ttl: number) {
     return cached(`af:${path}`, ttl, async () => {
-      const body = await getJson<AfEnvelope<T>>(NAME, `${BASE}${path}`, { "x-apisports-key": this.key }, env.apiFootballRpm);
+      // Shared cache keeps the free plan's small daily quota for distinct requests only.
+      const { data: body } = await fetchJson<AfEnvelope<T>>(NAME, `${BASE}${path}`, { "x-apisports-key": this.key }, {
+        revalidateSec: Math.round(ttl / 1000),
+        perMinute: env.apiFootballRpm,
+      });
       if (hasErrors(body.errors)) throw new Error("api-football plan/error: " + JSON.stringify(body.errors));
       return body.response;
     });
@@ -55,7 +59,7 @@ export class ApiFootballProvider implements TeamNewsProvider {
     const league = getCompetition(match.competition.code)?.apiFootballLeague;
     if (!league) return null;
     const date = match.utcDate.slice(0, 10);
-    const r = await this.call<AfFixture>(`/fixtures?date=${date}&league=${league}&season=${seasonFor(match)}`, 6 * 3600_000);
+    const r = await this.call<AfFixture>(`/fixtures?date=${date}&league=${league}&season=${seasonFor(match)}`, 12 * 3600_000);
     const f = r.value.find((x) => teamsMatch(x.teams.home.name, match.homeTeam) && teamsMatch(x.teams.away.name, match.awayTeam));
     return f ? { id: f.fixture.id, homeId: f.teams.home.id, awayId: f.teams.away.id } : null;
   }
@@ -81,6 +85,9 @@ export class ApiFootballProvider implements TeamNewsProvider {
   }
 
   async getLineups(match: Match): Promise<Maybe<Lineup[]>> {
+    // Official lineups are published ~1h before kick-off: don't spend quota earlier.
+    if (new Date(match.utcDate).getTime() - Date.now() > 2 * 3600_000)
+      return { unavailable: true, reasonKey: "lineups.notPublished", provider: NAME };
     try {
       const fx = await this.findFixture(match);
       if (!fx) return { unavailable: true, reasonKey: "teamnews.fixtureNotFound", provider: NAME };

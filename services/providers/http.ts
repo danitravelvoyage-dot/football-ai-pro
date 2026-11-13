@@ -21,6 +21,8 @@ export interface FetchOptions {
   /** On HTTP 429, wait for the provider-specified delay (if short) and retry once. */
   retryOn429?: boolean;
   timeoutMs?: number;
+  /** Called with the response headers of successful responses (e.g. to read quota counters). */
+  onHeaders?: (h: Headers) => void;
 }
 
 const MAX_WAIT_MS = 10_000;
@@ -74,6 +76,7 @@ export async function fetchJson<T>(
       throw new RateLimitedError(provider, delay);
     }
     if (!res.ok) throw new ProviderError(provider, res.status, await errorMessage(res));
+    opts.onHeaders?.(res.headers);
     // The Date header is the upstream's original response time, even when served from the shared cache.
     const date = Date.parse(res.headers.get("date") ?? "");
     return { data: (await res.json()) as T, fetchedAt: new Date(Number.isFinite(date) ? date : Date.now()).toISOString() };

@@ -61,7 +61,7 @@ npm run verify
 | Provider | Used for | Env var | Notes |
 |---|---|---|---|
 | [football-data.org](https://www.football-data.org) v4 | Fixtures, results, half-time scores, standings, H2H, squads | `FOOTBALL_DATA_API_KEY` | Free tier covers PL, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, World Cup, Euros (and a few others) at ≈10 requests/minute. **No odds, xG, injuries, corners or cards.** The Europa League is not in the free tier. |
-| [The Odds API](https://the-odds-api.com) v4 | Bookmaker 1X2 and over/under 2.5 odds | `ODDS_API_KEY` | Monthly credit quota. One request per league, cached for 30 minutes. |
+| [The Odds API](https://the-odds-api.com) v4 | Bookmaker 1X2 and over/under 2.5 odds | `ODDS_API_KEY` | Free plan: 500 credits/month (2 per league request). Odds are fetched once a day per competition through the shared cache, only for matches within 48 hours, and fetching stops below 40 remaining credits. Odds can therefore be up to 24 hours old (the fetch time is shown). |
 | [API-Football](https://www.api-football.com) v3 | Injuries, suspensions, official lineups | `API_FOOTBALL_KEY` | Small daily quota. The free plan may restrict seasons; restrictions show as "unavailable". |
 | Understat | xG | — | **Not integrated.** No official public API, and we do not scrape. |
 | Sofascore | Live stats | — | **Not integrated.** No officially permitted public API. |
