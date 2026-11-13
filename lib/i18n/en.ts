@@ -400,7 +400,7 @@ export const en = {
   "providers.free.sofascore": "Not integrated: no officially permitted public API for third parties.",
   "providers.free.db": "Supabase free tier PostgreSQL. Without DATABASE_URL a local JSON file is used.",
 
-  "provider.rateLimited": "Provider rate limit reached — try again in a minute.",
+  "provider.rateLimited": "The free data plan allows 10 requests per minute and the limit was just reached. Refresh the page in about a minute — results are then served from the cache.",
   "provider.notInPlan": "Not included in the provider's free plan.",
   "provider.notFound": "Not found at provider.",
   "provider.error": "Provider error — data temporarily unavailable.",

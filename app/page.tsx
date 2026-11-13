@@ -45,7 +45,7 @@ export default async function Dashboard() {
   return (
     <>
       <PageHeader title={t("dash.title")} subtitle={t("dash.subtitle")} right={<SourceBadge source={feed.source} />} />
-      {feed.error && <div className="mb-4"><Notice>{t("provider.error")} <span dir="ltr">({feed.error})</span></Notice></div>}
+      {feed.error && <div className="mb-4"><Notice>{t(feed.errorKey ?? "provider.error")}</Notice></div>}
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label={t("dash.kpi.matches")} value={fmt.int(feed.matches.length)} />

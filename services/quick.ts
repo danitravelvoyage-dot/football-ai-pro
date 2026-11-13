@@ -15,8 +15,11 @@ export async function quickPredictions(matches: Match[]): Promise<Map<string, Pr
   for (const m of matches) byComp.set(m.competition.code, [...(byComp.get(m.competition.code) ?? []), m]);
   await Promise.all(
     [...byComp.entries()].map(async ([code, ms]) => {
-      const res = await fx.getCompetitionMatches(code);
-      const pool = isUnavailable(res) ? [] : res.data;
+      const res = await fx.getCompetitionMatches(code, { fast: true });
+      // No data (rate limit, plan restriction) → no probabilities shown, never numbers from an empty model.
+      if (isUnavailable(res)) return;
+      const pool = res.data;
+      if (pool.filter((x) => x.status === "FINISHED").length < 20) return;
       for (const m of ms) {
         const { value } = await cached(`quick:${fx.name}:${m.id}:${m.status}`, 10 * 60_000, async () => {
           const asOf = new Date(Math.min(Date.now(), new Date(m.utcDate).getTime()));

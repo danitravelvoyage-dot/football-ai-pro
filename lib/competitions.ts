@@ -16,6 +16,10 @@ export const COMPETITIONS: CompetitionMeta[] = [
   { code: "FL1", name: "Ligue 1", country: "France", countryCode: "FRA", type: "LEAGUE", footballDataFree: true, oddsApiKey: "soccer_france_ligue_one", apiFootballLeague: 61, color: "#06b6d4" },
   { code: "CL", name: "UEFA Champions League", country: "Europe", countryCode: "EUR", type: "CUP", footballDataFree: true, oddsApiKey: "soccer_uefa_champs_league", apiFootballLeague: 2, color: "#eab308" },
   { code: "EL", name: "UEFA Europa League", country: "Europe", countryCode: "EUR", type: "CUP", footballDataFree: false, oddsApiKey: "soccer_uefa_europa_league", apiFootballLeague: 3, color: "#f59e0b" },
+  { code: "DED", name: "Eredivisie", country: "Netherlands", countryCode: "NLD", type: "LEAGUE", footballDataFree: true, oddsApiKey: "soccer_netherlands_eredivisie", apiFootballLeague: 88, color: "#fb923c" },
+  { code: "PPL", name: "Primeira Liga", country: "Portugal", countryCode: "POR", type: "LEAGUE", footballDataFree: true, oddsApiKey: "soccer_portugal_primeira_liga", apiFootballLeague: 94, color: "#22c55e" },
+  { code: "ELC", name: "Championship", country: "England", countryCode: "ENG", type: "LEAGUE", footballDataFree: true, oddsApiKey: "soccer_efl_champ", apiFootballLeague: 40, color: "#a78bfa" },
+  { code: "BSA", name: "Campeonato Brasileiro Série A", country: "Brazil", countryCode: "BRA", type: "LEAGUE", footballDataFree: true, oddsApiKey: "soccer_brazil_campeonato", apiFootballLeague: 71, color: "#facc15" },
   { code: "WC", name: "FIFA World Cup", country: "World", countryCode: "INT", type: "INTERNATIONAL", footballDataFree: true, oddsApiKey: "soccer_fifa_world_cup", apiFootballLeague: 1, color: "#10b981" },
   { code: "EC", name: "European Championship", country: "Europe", countryCode: "EUR", type: "INTERNATIONAL", footballDataFree: true, oddsApiKey: "soccer_uefa_european_championship", apiFootballLeague: 4, color: "#14b8a6" },
 ];

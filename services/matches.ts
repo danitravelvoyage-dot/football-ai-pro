@@ -1,6 +1,7 @@
 import "server-only";
 import { addDaysYmd, ymdInTz } from "@/lib/dates";
 import { LEAGUE_CODES } from "@/lib/competitions";
+import { RateLimitedError } from "@/lib/rateLimit";
 import { getFixturesProvider } from "@/services/providers";
 import type { Match, SourceInfo } from "@/types";
 
@@ -9,6 +10,8 @@ export interface MatchFeed {
   source: SourceInfo;
   liveSupported: boolean;
   error?: string;
+  /** i18n key for the error, shown to users instead of raw provider text */
+  errorKey?: string;
 }
 
 export const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
@@ -45,6 +48,7 @@ export async function getMatchesBetween(fromYmd: string, toYmd: string, tz: stri
       source: { provider: fx.name, fetchedAt: new Date().toISOString(), cached: false, demo: fx.demo },
       liveSupported: fx.supportsLive,
       error: e instanceof Error ? e.message : "provider error",
+      errorKey: e instanceof RateLimitedError ? "provider.rateLimited" : "provider.error",
     };
   }
 }

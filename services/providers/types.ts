@@ -9,7 +9,8 @@ export interface FixturesProvider {
   readonly supportsLive: boolean;
   listMatches(dateFrom: string, dateTo: string): Promise<Sourced<Match[]>>;
   getMatch(id: string): Promise<Sourced<Match> | null>;
-  getCompetitionMatches(code: string): Promise<Maybe<Match[]>>;
+  /** `fast`: fail immediately when rate-limited instead of waiting (used for optional enrichments). */
+  getCompetitionMatches(code: string, opts?: { fast?: boolean }): Promise<Maybe<Match[]>>;
   getStandings(code: string): Promise<Maybe<Standings>>;
   getTeamMatches(teamId: string, limit?: number): Promise<Maybe<Match[]>>;
   getHeadToHead(match: Match): Promise<Maybe<Match[]>>;

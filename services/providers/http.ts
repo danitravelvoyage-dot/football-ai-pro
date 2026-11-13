@@ -1,4 +1,4 @@
-import { acquireOutbound } from "@/lib/rateLimit";
+import { acquireOutbound, RateLimitedError } from "@/lib/rateLimit";
 
 export class ProviderError extends Error {
   constructor(
@@ -10,25 +10,78 @@ export class ProviderError extends Error {
   }
 }
 
-/** GET JSON from an upstream with outbound rate limiting, timeout and typed errors. */
-export async function getJson<T>(
+export interface FetchOptions {
+  /** Local token bucket (requests/minute) for providers whose responses are not shared-cached. */
+  perMinute?: number;
+  /**
+   * Use the platform's shared data cache (on Vercel it is shared across all server instances).
+   * Only successful (200) responses are cached, so errors and rate-limit replies never are.
+   */
+  revalidateSec?: number;
+  /** On HTTP 429, wait for the provider-specified delay (if short) and retry once. */
+  retryOn429?: boolean;
+  timeoutMs?: number;
+}
+
+const MAX_WAIT_MS = 10_000;
+// When the provider told us to back off, every request to it waits (or fails fast) until then.
+const blockedUntil = new Map<string, number>();
+
+function retryAfterMs(res: Response, message: string): number {
+  const m = /wait\s+(\d+)\s*sec/i.exec(message);
+  if (m) return Number(m[1]) * 1000 + 250;
+  for (const h of ["retry-after", "x-requestcounter-reset"]) {
+    const v = Number(res.headers.get(h));
+    if (Number.isFinite(v) && v > 0) return v * 1000 + 250;
+  }
+  return 60_000;
+}
+
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string };
+    if (body?.message) return body.message;
+  } catch {
+    /* ignore */
+  }
+  return res.statusText;
+}
+
+/** GET JSON with shared caching, provider-directed back-off, timeout and typed errors. */
+export async function fetchJson<T>(
   provider: string,
   url: string,
   headers: Record<string, string>,
-  perMinute: number,
-  timeoutMs = 10_000,
-): Promise<T> {
-  await acquireOutbound(provider, perMinute);
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = (await res.json()) as { message?: string };
-      if (body?.message) msg = body.message;
-    } catch {
-      /* ignore */
+  opts: FetchOptions = {},
+): Promise<{ data: T; fetchedAt: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const wait = (blockedUntil.get(provider) ?? 0) - Date.now();
+    if (wait > 0) {
+      if (!opts.retryOn429 || wait > MAX_WAIT_MS) throw new RateLimitedError(provider, wait);
+      await new Promise((r) => setTimeout(r, wait));
     }
-    throw new ProviderError(provider, res.status, msg);
+    if (opts.perMinute) await acquireOutbound(provider, opts.perMinute);
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000),
+      ...(opts.revalidateSec ? { cache: "force-cache" as const, next: { revalidate: opts.revalidateSec } } : { cache: "no-store" as const }),
+    });
+    if (res.status === 429) {
+      const msg = await errorMessage(res);
+      const delay = retryAfterMs(res, msg);
+      blockedUntil.set(provider, Date.now() + delay);
+      if (attempt === 0 && opts.retryOn429 && delay <= MAX_WAIT_MS) continue;
+      throw new RateLimitedError(provider, delay);
+    }
+    if (!res.ok) throw new ProviderError(provider, res.status, await errorMessage(res));
+    // The Date header is the upstream's original response time, even when served from the shared cache.
+    const date = Date.parse(res.headers.get("date") ?? "");
+    return { data: (await res.json()) as T, fetchedAt: new Date(Number.isFinite(date) ? date : Date.now()).toISOString() };
   }
-  return (await res.json()) as T;
+  throw new RateLimitedError(provider, MAX_WAIT_MS);
+}
+
+/** Uncached GET with a local token bucket (used by quota-based providers). */
+export async function getJson<T>(provider: string, url: string, headers: Record<string, string>, perMinute: number): Promise<T> {
+  return (await fetchJson<T>(provider, url, headers, { perMinute })).data;
 }

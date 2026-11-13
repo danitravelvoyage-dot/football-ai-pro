@@ -4,10 +4,9 @@
 import "server-only";
 import { cached } from "@/lib/cache";
 import { getCompetition } from "@/lib/competitions";
-import { env } from "@/lib/env";
 import { RateLimitedError } from "@/lib/rateLimit";
 import type { Competition, Match, MatchStatus, Maybe, Sourced, StandingRow, Standings, TeamDetails, TeamRef } from "@/types";
-import { getJson, ProviderError } from "./http";
+import { fetchJson, ProviderError } from "./http";
 import type { FixturesProvider } from "./types";
 
 const BASE = "https://api.football-data.org/v4";
@@ -35,7 +34,7 @@ interface FdStandingRow {
 }
 
 const TTL = {
-  matchesToday: 60_000, // 1 min — scores during match days
+  matchesToday: 120_000, // 2 min — fixtures & scores (free tier scores may be delayed anyway)
   match: 60_000,
   competitionMatches: 30 * 60_000,
   standings: 60 * 60_000,
@@ -104,10 +103,17 @@ export class FootballDataProvider implements FixturesProvider {
 
   constructor(private key: string) {}
 
-  private async get<T>(path: string, ttl: number): Promise<{ value: T; cached: boolean; storedAt: number }> {
-    return cached(`fd:${path}`, ttl, () =>
-      getJson<T>(NAME, `${BASE}${path}`, { "X-Auth-Token": this.key }, env.footballDataRpm),
+  /**
+   * All requests go through the shared data cache (one upstream call per URL per TTL for all visitors)
+   * plus an in-memory layer that de-duplicates concurrent requests. `fast` disables waiting on 429.
+   */
+  private async get<T>(path: string, ttl: number, fast = false): Promise<{ value: T; cached: boolean; storedAt: number }> {
+    const r = await cached(`fd:${path}`, ttl, () =>
+      fetchJson<T>(NAME, `${BASE}${path}`, { "X-Auth-Token": this.key }, { revalidateSec: Math.round(ttl / 1000), retryOn429: !fast }),
     );
+    const fetched = Date.parse(r.value.fetchedAt);
+    // "cached" when the data is older than a few seconds (served from a cache layer)
+    return { value: r.value.data, cached: r.cached || Date.now() - fetched > 5000, storedAt: fetched };
   }
 
   private src(r: { cached: boolean; storedAt: number }, path: string) {
@@ -141,10 +147,10 @@ export class FootballDataProvider implements FixturesProvider {
     }
   }
 
-  async getCompetitionMatches(code: string): Promise<Maybe<Match[]>> {
+  async getCompetitionMatches(code: string, opts?: { fast?: boolean }): Promise<Maybe<Match[]>> {
     const path = `/competitions/${encodeURIComponent(code)}/matches`;
     try {
-      const r = await this.get<{ matches: FdMatch[] }>(path, TTL.competitionMatches);
+      const r = await this.get<{ matches: FdMatch[] }>(path, TTL.competitionMatches, opts?.fast);
       return { data: (r.value.matches ?? []).map(mapFdMatch), source: this.src(r, path) };
     } catch (e) {
       return this.unavailable(e);

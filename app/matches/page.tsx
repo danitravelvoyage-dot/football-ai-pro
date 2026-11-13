@@ -89,7 +89,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: SP }
           <span className="ms-auto text-xs text-mute">{t("filters.results", { n: matches.length })}</span>
         </div>
       </Panel>
-      {feed.error && <div className="mb-4"><Notice>{t("provider.error")}</Notice></div>}
+      {feed.error && <div className="mb-4"><Notice>{t(feed.errorKey ?? "provider.error")}</Notice></div>}
       {filters.status === "live" && !feed.liveSupported && <div className="mb-4"><Notice tone="azure">{t("demo.noLive")}</Notice></div>}
       {matches.length === 0 ? (
         <p className="panel p-6 text-center text-sm text-mute">{t("dash.noMatches")}</p>

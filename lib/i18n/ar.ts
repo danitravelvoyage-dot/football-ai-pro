@@ -402,7 +402,7 @@ export const ar: Dict = {
   "providers.free.sofascore": "غير مدمج: لا توجد واجهة API عامة مسموح بها رسميًا لأطراف ثالثة.",
   "providers.free.db": "PostgreSQL على خطة Supabase المجانية. بدون DATABASE_URL يُستخدم ملف JSON محلي.",
 
-  "provider.rateLimited": "تم بلوغ حد الطلبات لدى المزود — حاول بعد دقيقة.",
+  "provider.rateLimited": "الخطة المجانية للبيانات تسمح بـ10 طلبات في الدقيقة وقد تم بلوغ الحد للتو. حدّث الصفحة بعد دقيقة تقريبًا — بعدها تُعرض النتائج من الذاكرة المؤقتة.",
   "provider.notInPlan": "غير مشمول في الخطة المجانية للمزود.",
   "provider.notFound": "غير موجود لدى المزود.",
   "provider.error": "خطأ لدى المزود — البيانات غير متاحة مؤقتًا.",

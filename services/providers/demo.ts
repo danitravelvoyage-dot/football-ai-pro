@@ -83,7 +83,8 @@ export class DemoFixturesProvider implements FixturesProvider {
     return m ? { data: m, source: src() } : null;
   }
 
-  async getCompetitionMatches(code: string): Promise<Maybe<Match[]>> {
+  async getCompetitionMatches(code: string, _opts?: { fast?: boolean }): Promise<Maybe<Match[]>> {
+    void _opts;
     const data = allMatches().filter((m) => m.competition.code === code);
     if (data.length === 0) return { unavailable: true, reasonKey: "provider.noDemoData", provider: NAME };
     return { data, source: src() };
