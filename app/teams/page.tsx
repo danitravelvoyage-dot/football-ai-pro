@@ -8,6 +8,8 @@ import { getFixturesProvider } from "@/services/providers";
 import { isUnavailable, type StandingRow } from "@/types";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 export const metadata = { title: "Teams" };
 
 export default async function TeamsPage({ searchParams }: { searchParams: Promise<{ league?: string; q?: string }> }) {

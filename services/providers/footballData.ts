@@ -107,9 +107,9 @@ export class FootballDataProvider implements FixturesProvider {
    * All requests go through the shared data cache (one upstream call per URL per TTL for all visitors)
    * plus an in-memory layer that de-duplicates concurrent requests. `fast` disables waiting on 429.
    */
-  private async get<T>(path: string, ttl: number, fast = false): Promise<{ value: T; cached: boolean; storedAt: number }> {
+  private async get<T>(path: string, ttl: number, fast = false, maxWaitMs?: number): Promise<{ value: T; cached: boolean; storedAt: number }> {
     const r = await cached(`fd:${path}`, ttl, () =>
-      fetchJson<T>(NAME, `${BASE}${path}`, { "X-Auth-Token": this.key }, { revalidateSec: Math.round(ttl / 1000), retryOn429: !fast }),
+      fetchJson<T>(NAME, `${BASE}${path}`, { "X-Auth-Token": this.key }, { revalidateSec: Math.round(ttl / 1000), retryOn429: !fast, maxWaitMs }),
     );
     const fetched = Date.parse(r.value.fetchedAt);
     // "cached" when the data is older than a few seconds (served from a cache layer)
@@ -131,7 +131,8 @@ export class FootballDataProvider implements FixturesProvider {
 
   async listMatches(dateFrom: string, dateTo: string): Promise<Sourced<Match[]>> {
     const path = `/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
-    const r = await this.get<{ matches: FdMatch[] }>(path, TTL.matchesToday);
+    // The fixture list is the most important request: wait out a full rate-limit window if needed.
+    const r = await this.get<{ matches: FdMatch[] }>(path, TTL.matchesToday, false, 45_000);
     return { data: (r.value.matches ?? []).map(mapFdMatch), source: this.src(r, path) };
   }
 

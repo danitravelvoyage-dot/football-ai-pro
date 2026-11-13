@@ -9,6 +9,8 @@ import { applyFilters, getMatchesBetween } from "@/services/matches";
 import { quickPredictions } from "@/services/quick";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 export const metadata = { title: "Matches" };
 
 type SP = Promise<Record<string, string | string[] | undefined>>;

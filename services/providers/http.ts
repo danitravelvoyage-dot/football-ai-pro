@@ -21,6 +21,8 @@ export interface FetchOptions {
   /** On HTTP 429, wait for the provider-specified delay (if short) and retry once. */
   retryOn429?: boolean;
   timeoutMs?: number;
+  /** Longest provider-requested wait to honour before giving up (default 10s). */
+  maxWaitMs?: number;
   /** Called with the response headers of successful responses (e.g. to read quota counters). */
   onHeaders?: (h: Headers) => void;
 }
@@ -57,9 +59,10 @@ export async function fetchJson<T>(
   opts: FetchOptions = {},
 ): Promise<{ data: T; fetchedAt: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
+    const maxWait = opts.maxWaitMs ?? MAX_WAIT_MS;
     const wait = (blockedUntil.get(provider) ?? 0) - Date.now();
     if (wait > 0) {
-      if (!opts.retryOn429 || wait > MAX_WAIT_MS) throw new RateLimitedError(provider, wait);
+      if (!opts.retryOn429 || wait > maxWait) throw new RateLimitedError(provider, wait);
       await new Promise((r) => setTimeout(r, wait));
     }
     if (opts.perMinute) await acquireOutbound(provider, opts.perMinute);
@@ -72,7 +75,7 @@ export async function fetchJson<T>(
       const msg = await errorMessage(res);
       const delay = retryAfterMs(res, msg);
       blockedUntil.set(provider, Date.now() + delay);
-      if (attempt === 0 && opts.retryOn429 && delay <= MAX_WAIT_MS) continue;
+      if (attempt === 0 && opts.retryOn429 && delay <= maxWait) continue;
       throw new RateLimitedError(provider, delay);
     }
     if (!res.ok) throw new ProviderError(provider, res.status, await errorMessage(res));

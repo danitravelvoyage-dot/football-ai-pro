@@ -13,6 +13,8 @@ import { generateReport } from "@/services/report";
 import type { MarketKey } from "@/types";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

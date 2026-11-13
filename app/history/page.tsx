@@ -5,6 +5,8 @@ import { getI18n } from "@/lib/i18n/server";
 import { listPredictions } from "@/services/predictions";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 export const metadata = { title: "Prediction History" };
 
 export default async function HistoryPage() {

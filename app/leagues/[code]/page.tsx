@@ -11,6 +11,8 @@ import { getLeague } from "@/services/leagues";
 import { isUnavailable } from "@/types";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 
 export default async function LeaguePage({ params, searchParams }: { params: Promise<{ code: string }>; searchParams: Promise<{ view?: string }> }) {
   const { code: raw } = await params;

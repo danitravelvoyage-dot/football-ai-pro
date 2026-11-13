@@ -10,6 +10,8 @@ import { getFixturesProvider } from "@/services/providers";
 import { isUnavailable } from "@/types";
 
 export const dynamic = "force-dynamic";
+// allow waiting out a free-tier rate-limit window instead of failing (Vercel Hobby max is 60s)
+export const maxDuration = 60;
 
 export default async function TeamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: raw } = await params;

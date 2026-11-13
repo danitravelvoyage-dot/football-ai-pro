@@ -13,22 +13,24 @@ export async function quickPredictions(matches: Match[]): Promise<Map<string, Pr
   const out = new Map<string, PredictionResult>();
   const byComp = new Map<string, Match[]>();
   for (const m of matches) byComp.set(m.competition.code, [...(byComp.get(m.competition.code) ?? []), m]);
-  await Promise.all(
-    [...byComp.entries()].map(async ([code, ms]) => {
-      const res = await fx.getCompetitionMatches(code, { fast: true });
-      // No data (rate limit, plan restriction) → no probabilities shown, never numbers from an empty model.
-      if (isUnavailable(res)) return;
-      const pool = res.data;
-      if (pool.filter((x) => x.status === "FINISHED").length < 20) return;
-      for (const m of ms) {
-        const { value } = await cached(`quick:${fx.name}:${m.id}:${m.status}`, 10 * 60_000, async () => {
-          const asOf = new Date(Math.min(Date.now(), new Date(m.utcDate).getTime()));
-          return getModel().predict({ match: m, asOf, leagueMatches: pool, homeRecent: [], awayRecent: [], h2h: [] });
-        });
-        out.set(m.id, value);
-      }
-    }),
-  );
+  // Sequential on purpose: on a cold cache, parallel requests would burst past the free 10 req/min
+  // limit and starve the fixture list. Stop at the first rate-limit and show those matches without bars.
+  for (const [code, ms] of [...byComp.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    const res = await fx.getCompetitionMatches(code, { fast: true });
+    if (isUnavailable(res)) {
+      if (res.reasonKey === "provider.rateLimited") break;
+      continue;
+    }
+    const pool = res.data;
+    if (pool.filter((x) => x.status === "FINISHED").length < 20) continue;
+    for (const m of ms) {
+      const { value } = await cached(`quick:${fx.name}:${m.id}:${m.status}`, 10 * 60_000, async () => {
+        const asOf = new Date(Math.min(Date.now(), new Date(m.utcDate).getTime()));
+        return getModel().predict({ match: m, asOf, leagueMatches: pool, homeRecent: [], awayRecent: [], h2h: [] });
+      });
+      out.set(m.id, value);
+    }
+  }
   return out;
 }
 

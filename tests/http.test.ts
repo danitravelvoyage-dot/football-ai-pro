@@ -26,3 +26,17 @@ describe("fetchJson rate-limit handling", () => {
     expect(f).toHaveBeenCalledTimes(1); // second call blocked locally, no extra upstream request
   });
 });
+
+describe("fetchJson long waits", () => {
+  it("honours a longer provider wait when maxWaitMs allows it", async () => {
+    vi.useFakeTimers();
+    const f = vi.fn()
+      .mockResolvedValueOnce(json(429, { message: "Wait 20 seconds." }))
+      .mockResolvedValueOnce(json(200, { ok: 1 }));
+    vi.stubGlobal("fetch", f);
+    const p = fetchJson<{ ok: number }>("p3", "https://x", {}, { retryOn429: true, maxWaitMs: 45_000 });
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect((await p).data.ok).toBe(1);
+    vi.useRealTimers();
+  });
+});
