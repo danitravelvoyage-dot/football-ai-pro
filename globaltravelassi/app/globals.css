@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --navy-deep: #050d1b;
+  --navy: #0e2140;
+  --gold: #c9a24b;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: #0e2140;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg, video { max-width: 100%; height: auto; }
+
+:focus-visible { outline: 2px solid #d9b76a; outline-offset: 3px; }
+
+/* Gold rule used under headings */
+.gold-rule {
+  background: linear-gradient(90deg, transparent, #c9a24b, #f8f0dc, #c9a24b, transparent);
+}
+
+/* Shimmering gold text for key words in hero headlines */
+.gold-text {
+  background: linear-gradient(100deg, #b98b33 0%, #f8f0dc 35%, #d9b76a 55%, #b98b33 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 7s linear infinite;
+}
+
+/* Scroll reveal (see components/Reveal.tsx) */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 28px, 0);
+  transition: opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.is-visible { opacity: 1; transform: none; }
+
+/* Animated arches drawn once on load */
+.arch-draw path {
+  stroke-dasharray: 1600;
+  stroke-dashoffset: 1600;
+  animation: archDraw 2.8s cubic-bezier(0.3, 0.6, 0.2, 1) 0.3s forwards;
+}
+@keyframes archDraw { to { stroke-dashoffset: 0; } }
+
+/* Slow drifting light behind the hero */
+.light-drift { animation: drift 28s ease-in-out infinite; will-change: transform; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  .reveal { opacity: 1; transform: none; }
+  .arch-draw path { stroke-dashoffset: 0; }
+}
