@@ -61,3 +61,7 @@ npm run verify                  # lint + typecheck + tests + production build
 
 - No online card or mobile-payment gateway: payments are recorded by an administrator after money is received (cash, bank transfer, CCP, BaridiMob).
 - Email notifications are limited to Supabase's account emails (confirmation, password reset). Status updates reach customers through the dashboard and WhatsApp.
+
+## Deployment
+
+Vercel builds this project from branch `claude/affectionate-rubin-la5937`, Root Directory `globaltravelassi`. See DEPLOYMENT.md.
