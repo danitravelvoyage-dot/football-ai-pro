@@ -107,7 +107,7 @@ export function Alert({ tone, children }: { tone: "success" | "error" | "info" |
   );
 }
 
-export function Logo({ compact = false }: { compact?: boolean }) {
+export function Logo() {
   return (
     <span className="inline-flex items-center gap-3">
       <svg width="34" height="28" viewBox="0 0 34 28" aria-hidden className="shrink-0 text-gold-400">
@@ -116,7 +116,6 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       </svg>
       <span className="leading-none">
         <span className="block font-display text-[15px] font-semibold tracking-[0.16em] sm:text-base">GLOBALTRAVELASSI</span>
-        {!compact && <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.35em] text-gold-400">VISORA</span>}
       </span>
     </span>
   );

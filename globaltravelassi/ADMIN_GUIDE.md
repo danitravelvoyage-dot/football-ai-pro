@@ -17,7 +17,7 @@ Open a request to:
 1. **Change status.** Choose the new status and optionally write a message. The customer sees the change, with your message, in their dashboard timeline.
    Statuses: New · In review · Documents required · Submitted to authority · Approved · Rejected · Completed · Cancelled.
    - Customers can upload or remove documents only while the status is *New* or *Documents required*. Once you move it to *In review* or later, uploads are locked. Move it back to *Documents required* if the customer must send more files.
-2. **Check documents.** Download each file, then click **Mark as checked**. Customers see the "Checked by VISORA" badge.
+2. **Check documents.** Download each file, then click **Mark as checked**. Customers see the "Checked by GLOBALTRAVELASSI" badge.
 3. **Record payments.** Enter the amount, currency, method, the receipt or transfer reference, and the date received. Choose status *Received* only after the money has actually arrived. The total of *Received* payments is what appears in reports. Mark a payment *Cancelled* if it was a mistake. Nothing is confirmed automatically.
 4. **Internal notes.** Visible to administrators only. Customers never see them.
 5. **Delete request.** Removes the request, its documents and payments permanently. Use only for test or duplicate entries.

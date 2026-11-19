@@ -1,5 +1,5 @@
 export const en = {
-  brand: { name: "GLOBALTRAVELASSI", by: "by VISORA", tagline: "Visa, travel and European journeys — handled by experts for North Africa." },
+  brand: { name: "GLOBALTRAVELASSI", by: "by GLOBALTRAVELASSI", tagline: "Visa, travel and European journeys — handled by experts for North Africa." },
   nav: {
     home: "Home", services: "Services", apply: "Start my request", dashboard: "My requests", admin: "Admin",
     login: "Sign in", register: "Create account", logout: "Sign out", menu: "Menu", profile: "My profile",
@@ -23,7 +23,7 @@ export const en = {
     subtitle: "Send us your details once. Our advisers check your file, tell you exactly which documents you need, book your appointment and follow your request until the end.",
     primaryCta: "Start my request",
     whatsappCta: "Chat with us on WhatsApp",
-    trustTitle: "Why travellers trust VISORA",
+    trustTitle: "Why travellers trust GLOBALTRAVELASSI",
     trust: [
       { title: "A checklist made for you", text: "You learn exactly which documents your embassy or visa centre requires, before you pay anything." },
       { title: "One place to follow everything", text: "Your request, documents, status and payments are all visible in your personal dashboard." },
@@ -41,9 +41,9 @@ export const en = {
     europeText: "Discover the old bridges, coastal towns and mountain valleys of Europe — from the timeless stone of Mostar to the lights of the great capitals — with visa support and a planned itinerary.",
     europeCta: "Ask about a European trip",
     finalTitle: "Ready for your next journey?",
-    finalText: "Start in two minutes. A VISORA adviser will reply to you personally.",
+    finalText: "Start in two minutes. A GLOBALTRAVELASSI adviser will reply to you personally.",
     finalCta: "Start my request",
-    disclaimer: "VISORA is a consulting service. Visa and entry decisions are taken only by the competent authorities; no outcome is guaranteed.",
+    disclaimer: "GLOBALTRAVELASSI is a consulting service. Visa and entry decisions are taken only by the competent authorities; no outcome is guaranteed.",
   },
   services: {
     title: "Visa and travel services", subtitle: "Choose the service that matches your plan. Prices are confirmed by an adviser before you pay.",
@@ -67,7 +67,7 @@ export const en = {
       additional: "Study, family or work plans, dates that cannot move, any question you have.",
       documents: "Upload your passport, photo and supporting files now or later from your dashboard. PDF, JPG or PNG, max 10 MB per file.",
     },
-    consent: "I agree that VISORA may process my information to prepare my request, as described in the privacy notice. *",
+    consent: "I agree that GLOBALTRAVELASSI may process my information to prepare my request, as described in the privacy notice. *",
     submit: "Send my request", submitting: "Sending…",
     successTitle: "Your request has been received", successText: "Your reference is", successCta: "Go to my dashboard",
     uploadTitle: "Upload documents", uploadHint: "You can add more documents at any time while your request is new or awaiting documents.",
@@ -77,7 +77,7 @@ export const en = {
   auth: {
     loginTitle: "Sign in", loginSubtitle: "Access your requests, documents and payments.",
     email: "Email", password: "Password", confirmPassword: "Confirm password", passwordHint: "At least 8 characters, with a letter and a number.",
-    forgot: "Forgot your password?", loginSubmit: "Sign in", noAccount: "New to VISORA?", createAccount: "Create an account",
+    forgot: "Forgot your password?", loginSubmit: "Sign in", noAccount: "New to GLOBALTRAVELASSI?", createAccount: "Create an account",
     registerTitle: "Create your account", registerSubtitle: "A free account lets you follow every request.",
     fullName: "Full name", whatsapp: "WhatsApp number", registerSubmit: "Create my account", haveAccount: "Already have an account?", signIn: "Sign in",
     forgotTitle: "Reset your password", forgotSubtitle: "We will email you a secure link.", forgotSubmit: "Send reset link",
@@ -89,7 +89,7 @@ export const en = {
       exists: "An account already exists with this email. Sign in instead.", weak: "Use at least 8 characters with a letter and a number.",
       mismatch: "The two passwords do not match.", rateLimit: "Too many attempts. Wait a few minutes and try again.",
       generic: "We could not complete this. Please try again.", expired: "This link has expired. Request a new one.",
-      disabled: "This account is inactive. Contact VISORA on WhatsApp.",
+      disabled: "This account is inactive. Contact GLOBALTRAVELASSI on WhatsApp.",
     },
   },
   dashboard: {
@@ -97,13 +97,13 @@ export const en = {
     emptyCta: "Start my first request", reference: "Reference", service: "Service", status: "Status", travelDate: "Travel date",
     open: "Open", timeline: "Progress", noTimeline: "No updates yet.", documents: "Documents", noDocs: "No documents uploaded yet.",
     payments: "Payments", noPayments: "No payments are recorded for this request.",
-    paymentNote: "Payments appear here only after VISORA has recorded them.",
+    paymentNote: "Payments appear here only after GLOBALTRAVELASSI has recorded them.",
     profileTitle: "My profile", profileSaved: "Your profile has been updated.", profileEmail: "Email (cannot be changed here)",
     uploadTitle: "Add a document", docType: "Document type", chooseFile: "Choose file", uploading: "Uploading…", uploaded: "Document added.",
     removeDoc: "Remove", confirmRemove: "Remove this document?", uploadLimits: "PDF, JPG or PNG · max 10 MB",
-    locked: "Documents can no longer be changed because VISORA has started reviewing this request. Contact us on WhatsApp for changes.",
+    locked: "Documents can no longer be changed because GLOBALTRAVELASSI has started reviewing this request. Contact us on WhatsApp for changes.",
     requestInfo: "Request details", paymentAmount: "Amount", paymentMethod: "Method", paymentStatus: "Status", paymentDate: "Date", paymentRef: "Reference",
-    verified: "Checked by VISORA", notChecked: "Awaiting check", fileTooLarge: "This file is larger than 10 MB.", fileType: "Only PDF, JPG or PNG files are accepted.",
+    verified: "Checked by GLOBALTRAVELASSI", notChecked: "Awaiting check", fileTooLarge: "This file is larger than 10 MB.", fileType: "Only PDF, JPG or PNG files are accepted.",
     waitingDocs: "Please upload the documents listed below.",
     backToList: "Back to my requests", noRequestFound: "This request was not found.",
   },
@@ -160,14 +160,14 @@ export const en = {
       byStatus: "Requests by status", byService: "Requests by service", exportCsv: "Download Excel-compatible CSV", totalsByCurrency: "Payments received by currency",
       noData: "No data yet.",
     },
-    denied: "This area is for VISORA administrators only.",
+    denied: "This area is for GLOBALTRAVELASSI administrators only.",
     adminHome: "Back to admin",
   },
   notFound: { title: "Page not found", text: "The page you are looking for does not exist or has moved.", back: "Back to home" },
   footer: { legal: "Privacy and terms", contact: "Contact", whatsapp: "WhatsApp us", address: "Algeria · North Africa", rights: "All rights reserved." },
   privacy: {
     title: "Privacy notice",
-    body: "We collect the information you give us to prepare your visa or travel request, store your documents in a private secure space, and contact you about your request. Only authorised VISORA staff can access your documents. You can ask us at any time to correct or delete your data (except records we must keep by law). Visa decisions are made by the competent authorities.",
+    body: "We collect the information you give us to prepare your visa or travel request, store your documents in a private secure space, and contact you about your request. Only authorised GLOBALTRAVELASSI staff can access your documents. You can ask us at any time to correct or delete your data (except records we must keep by law). Visa decisions are made by the competent authorities.",
   },
 };
 

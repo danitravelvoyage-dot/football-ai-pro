@@ -1,6 +1,6 @@
 # GLOBALTRAVELASSI
 
-Commercial platform for **VISORA** — visa consulting, appointment assistance, e-visa, transit and airport consulting, and organised European trips for Algeria and North Africa.
+Commercial platform for **GLOBALTRAVELASSI** — visa consulting, appointment assistance, e-visa, transit and airport consulting, and organised European trips for Algeria and North Africa.
 
 - **Languages:** Arabic (default, right-to-left), French, English. Every label, email and error message is translated.
 - **Customers:** landing pages built for TikTok traffic, a service catalogue with prices, a request form with document upload, an account and a dashboard to track each request, payments and timeline. WhatsApp is one tap away on every page.

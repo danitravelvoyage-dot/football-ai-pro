@@ -13,8 +13,8 @@ const display = Playfair_Display({ subsets: ["latin"], weight: ["500", "600", "7
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.siteUrl),
-  title: { default: "GLOBALTRAVELASSI — VISORA", template: "%s · GLOBALTRAVELASSI" },
-  description: "VISORA: visa consulting, appointment assistance, e-visa, transit and organised European trips for Algeria and North Africa.",
+  title: { default: "GLOBALTRAVELASSI", template: "%s · GLOBALTRAVELASSI" },
+  description: "GLOBALTRAVELASSI: visa consulting, appointment assistance, e-visa, transit and organised European trips for Algeria and North Africa.",
   applicationName: "GLOBALTRAVELASSI",
   robots: { index: true, follow: true },
   icons: { icon: "/icon.svg" },

@@ -32,7 +32,7 @@ export function SiteFooter({ locale, dict }: { locale: Locale; dict: Dict }) {
       </div>
       <div className="border-t border-white/10 px-4 py-6 text-center text-xs leading-relaxed text-navy-400 sm:px-6">
         <p className="mx-auto max-w-3xl">{dict.home.disclaimer}</p>
-        <p className="mt-3">© {new Date().getFullYear()} VISORA · {dict.footer.rights}</p>
+        <p className="mt-3">© {new Date().getFullYear()} GLOBALTRAVELASSI · {dict.footer.rights}</p>
       </div>
     </footer>
   );

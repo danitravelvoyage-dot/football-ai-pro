@@ -1,7 +1,7 @@
 # GLOBALTRAVELASSI — Development Plan
 
 ## 1. Requirements analysis
-- Brand: VISORA travel & visa consulting (Algeria / North Africa). Platform name: GLOBALTRAVELASSI.
+- Brand: GLOBALTRAVELASSI travel & visa consulting (Algeria / North Africa). Platform name: GLOBALTRAVELASSI.
 - Languages: Arabic (RTL, default), French, English. Every public and admin label is translated.
 - Customers: landing pages, 5 service pages, application form (with documents), account, dashboard to track requests, WhatsApp contact.
 - Admin: secure login, customers list, applications (status, internal notes, documents, payments), services & prices, statistics and reports.

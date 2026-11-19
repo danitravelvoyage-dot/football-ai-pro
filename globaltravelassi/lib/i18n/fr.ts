@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 export const fr: Dict = {
-  brand: { name: "GLOBALTRAVELASSI", by: "par VISORA", tagline: "Visa, voyages et séjours en Europe — accompagnés par des experts pour l’Afrique du Nord." },
+  brand: { name: "GLOBALTRAVELASSI", by: "par GLOBALTRAVELASSI", tagline: "Visa, voyages et séjours en Europe — accompagnés par des experts pour l’Afrique du Nord." },
   nav: {
     home: "Accueil", services: "Services", apply: "Démarrer ma demande", dashboard: "Mes demandes", admin: "Administration",
     login: "Se connecter", register: "Créer un compte", logout: "Se déconnecter", menu: "Menu", profile: "Mon profil",
@@ -25,7 +25,7 @@ export const fr: Dict = {
     subtitle: "Envoyez vos informations une seule fois. Nos conseillers vérifient votre dossier, vous indiquent précisément les documents nécessaires, réservent votre rendez-vous et suivent votre demande jusqu’au bout.",
     primaryCta: "Démarrer ma demande",
     whatsappCta: "Discuter sur WhatsApp",
-    trustTitle: "Pourquoi les voyageurs font confiance à VISORA",
+    trustTitle: "Pourquoi les voyageurs font confiance à GLOBALTRAVELASSI",
     trust: [
       { title: "Une liste de documents faite pour vous", text: "Vous savez exactement ce qu’exige votre ambassade ou votre centre de visas, avant de payer quoi que ce soit." },
       { title: "Tout suivre au même endroit", text: "Votre demande, vos documents, le statut et les paiements sont visibles dans votre espace personnel." },
@@ -43,9 +43,9 @@ export const fr: Dict = {
     europeText: "Découvrez les vieux ponts, les villes côtières et les vallées de montagne d’Europe — de la pierre intemporelle de Mostar aux lumières des grandes capitales — avec un accompagnement visa et un itinéraire préparé.",
     europeCta: "Demander un voyage en Europe",
     finalTitle: "Prêt pour votre prochain voyage ?",
-    finalText: "Commencez en deux minutes. Un conseiller VISORA vous répondra personnellement.",
+    finalText: "Commencez en deux minutes. Un conseiller GLOBALTRAVELASSI vous répondra personnellement.",
     finalCta: "Démarrer ma demande",
-    disclaimer: "VISORA est un service de conseil. Les décisions de visa et d’entrée relèvent uniquement des autorités compétentes ; aucun résultat n’est garanti.",
+    disclaimer: "GLOBALTRAVELASSI est un service de conseil. Les décisions de visa et d’entrée relèvent uniquement des autorités compétentes ; aucun résultat n’est garanti.",
   },
   services: {
     title: "Services visa et voyage", subtitle: "Choisissez le service qui correspond à votre projet. Un conseiller confirme le prix avant tout paiement.",
@@ -69,7 +69,7 @@ export const fr: Dict = {
       additional: "Projets d’études, familiaux ou professionnels, dates impossibles à déplacer, toute question.",
       documents: "Ajoutez votre passeport, une photo et les pièces justificatives maintenant ou plus tard depuis votre espace. PDF, JPG ou PNG, 10 Mo max par fichier.",
     },
-    consent: "J’accepte que VISORA traite mes informations pour préparer ma demande, comme décrit dans la politique de confidentialité. *",
+    consent: "J’accepte que GLOBALTRAVELASSI traite mes informations pour préparer ma demande, comme décrit dans la politique de confidentialité. *",
     submit: "Envoyer ma demande", submitting: "Envoi en cours…",
     successTitle: "Votre demande a bien été reçue", successText: "Votre référence est", successCta: "Aller à mon espace",
     uploadTitle: "Ajouter des documents", uploadHint: "Vous pouvez ajouter des documents à tout moment tant que la demande est nouvelle ou en attente de pièces.",
@@ -79,7 +79,7 @@ export const fr: Dict = {
   auth: {
     loginTitle: "Connexion", loginSubtitle: "Accédez à vos demandes, documents et paiements.",
     email: "E-mail", password: "Mot de passe", confirmPassword: "Confirmer le mot de passe", passwordHint: "8 caractères minimum, avec une lettre et un chiffre.",
-    forgot: "Mot de passe oublié ?", loginSubmit: "Se connecter", noAccount: "Nouveau chez VISORA ?", createAccount: "Créer un compte",
+    forgot: "Mot de passe oublié ?", loginSubmit: "Se connecter", noAccount: "Nouveau chez GLOBALTRAVELASSI ?", createAccount: "Créer un compte",
     registerTitle: "Créer votre compte", registerSubtitle: "Un compte gratuit vous permet de suivre chaque demande.",
     fullName: "Nom complet", whatsapp: "Numéro WhatsApp", registerSubmit: "Créer mon compte", haveAccount: "Vous avez déjà un compte ?", signIn: "Se connecter",
     forgotTitle: "Réinitialiser le mot de passe", forgotSubtitle: "Nous vous enverrons un lien sécurisé par e-mail.", forgotSubmit: "Envoyer le lien",
@@ -91,7 +91,7 @@ export const fr: Dict = {
       exists: "Un compte existe déjà avec cet e-mail. Connectez-vous plutôt.", weak: "Utilisez 8 caractères minimum, avec une lettre et un chiffre.",
       mismatch: "Les deux mots de passe ne correspondent pas.", rateLimit: "Trop de tentatives. Patientez quelques minutes puis réessayez.",
       generic: "Impossible de terminer cette action. Veuillez réessayer.", expired: "Ce lien a expiré. Demandez-en un nouveau.",
-      disabled: "Ce compte est inactif. Contactez VISORA sur WhatsApp.",
+      disabled: "Ce compte est inactif. Contactez GLOBALTRAVELASSI sur WhatsApp.",
     },
   },
   dashboard: {
@@ -99,13 +99,13 @@ export const fr: Dict = {
     emptyCta: "Démarrer ma première demande", reference: "Référence", service: "Service", status: "Statut", travelDate: "Date de voyage",
     open: "Ouvrir", timeline: "Avancement", noTimeline: "Aucune mise à jour pour l’instant.", documents: "Documents", noDocs: "Aucun document envoyé pour l’instant.",
     payments: "Paiements", noPayments: "Aucun paiement enregistré pour cette demande.",
-    paymentNote: "Les paiements apparaissent ici uniquement après enregistrement par VISORA.",
+    paymentNote: "Les paiements apparaissent ici uniquement après enregistrement par GLOBALTRAVELASSI.",
     profileTitle: "Mon profil", profileSaved: "Votre profil a été mis à jour.", profileEmail: "E-mail (non modifiable ici)",
     uploadTitle: "Ajouter un document", docType: "Type de document", chooseFile: "Choisir un fichier", uploading: "Envoi en cours…", uploaded: "Document ajouté.",
     removeDoc: "Retirer", confirmRemove: "Retirer ce document ?", uploadLimits: "PDF, JPG ou PNG · 10 Mo max",
-    locked: "Les documents ne peuvent plus être modifiés car VISORA a commencé l’examen de cette demande. Contactez-nous sur WhatsApp pour toute modification.",
+    locked: "Les documents ne peuvent plus être modifiés car GLOBALTRAVELASSI a commencé l’examen de cette demande. Contactez-nous sur WhatsApp pour toute modification.",
     requestInfo: "Détails de la demande", paymentAmount: "Montant", paymentMethod: "Mode", paymentStatus: "Statut", paymentDate: "Date", paymentRef: "Référence",
-    verified: "Vérifié par VISORA", notChecked: "En attente de vérification", fileTooLarge: "Ce fichier dépasse 10 Mo.", fileType: "Seuls les fichiers PDF, JPG ou PNG sont acceptés.",
+    verified: "Vérifié par GLOBALTRAVELASSI", notChecked: "En attente de vérification", fileTooLarge: "Ce fichier dépasse 10 Mo.", fileType: "Seuls les fichiers PDF, JPG ou PNG sont acceptés.",
     waitingDocs: "Veuillez envoyer les documents listés ci-dessous.",
     backToList: "Retour à mes demandes", noRequestFound: "Cette demande est introuvable.",
   },
@@ -162,13 +162,13 @@ export const fr: Dict = {
       byStatus: "Demandes par statut", byService: "Demandes par service", exportCsv: "Télécharger un CSV compatible Excel", totalsByCurrency: "Paiements reçus par devise",
       noData: "Aucune donnée pour l’instant.",
     },
-    denied: "Cet espace est réservé aux administrateurs VISORA.",
+    denied: "Cet espace est réservé aux administrateurs GLOBALTRAVELASSI.",
     adminHome: "Retour à l’administration",
   },
   notFound: { title: "Page introuvable", text: "La page demandée n’existe pas ou a été déplacée.", back: "Retour à l’accueil" },
   footer: { legal: "Confidentialité et conditions", contact: "Contact", whatsapp: "Écrivez-nous sur WhatsApp", address: "Algérie · Afrique du Nord", rights: "Tous droits réservés." },
   privacy: {
     title: "Politique de confidentialité",
-    body: "Nous collectons les informations que vous nous transmettez pour préparer votre demande de visa ou de voyage, conservons vos documents dans un espace privé sécurisé et vous contactons au sujet de votre demande. Seul le personnel VISORA autorisé peut accéder à vos documents. Vous pouvez à tout moment demander la correction ou la suppression de vos données (sauf les registres que la loi nous oblige à conserver). Les décisions de visa sont prises par les autorités compétentes.",
+    body: "Nous collectons les informations que vous nous transmettez pour préparer votre demande de visa ou de voyage, conservons vos documents dans un espace privé sécurisé et vous contactons au sujet de votre demande. Seul le personnel GLOBALTRAVELASSI autorisé peut accéder à vos documents. Vous pouvez à tout moment demander la correction ou la suppression de vos données (sauf les registres que la loi nous oblige à conserver). Les décisions de visa sont prises par les autorités compétentes.",
   },
 };

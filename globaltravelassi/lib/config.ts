@@ -2,7 +2,7 @@
 // to this project: anything prefixed NEXT_PUBLIC_ is shipped to every visitor's browser.
 export const siteConfig = {
   name: "GLOBALTRAVELASSI",
-  brand: "VISORA",
+  brand: "GLOBALTRAVELASSI",
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
   whatsappNumber: (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "").replace(/\D/g, ""),

@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const { locale: raw } = await params;
   const locale = isLocale(raw) ? raw : "ar";
   const dict = getDictionary(locale);
-  return { title: { absolute: "GLOBALTRAVELASSI — VISORA" }, description: dict.brand.tagline };
+  return { title: { absolute: "GLOBALTRAVELASSI" }, description: dict.brand.tagline };
 }
 
 const trustIcons = [FileCheck2, MessageCircle, ShieldCheck];
@@ -38,7 +38,6 @@ export default async function HomePage({
     "@context": "https://schema.org",
     "@type": "TravelAgency",
     name: siteConfig.name,
-    alternateName: siteConfig.brand,
     url: `${siteConfig.siteUrl}/${locale}`,
     description: dict.brand.tagline,
     areaServed: ["DZ", "MA", "TN", "FR", "ES", "IT"],
