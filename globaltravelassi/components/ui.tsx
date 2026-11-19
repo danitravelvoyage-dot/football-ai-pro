@@ -107,15 +107,24 @@ export function Alert({ tone, children }: { tone: "success" | "error" | "info" |
   );
 }
 
+/** Brand mark: a travel gate (arch) inside a compass ring. */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" aria-hidden className={className}>
+      <circle cx="24" cy="24" r="22.25" stroke="currentColor" strokeWidth="1.25" opacity="0.45" />
+      <path d="M13 37V23a11 11 0 0 1 22 0v14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M24 5.5v5M24 37.5v5M5.5 24h5M37.5 24h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
+      <circle cx="24" cy="18.5" r="1.9" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Logo() {
   return (
     <span className="inline-flex items-center gap-3">
-      <svg width="34" height="28" viewBox="0 0 34 28" aria-hidden className="shrink-0 text-gold-400">
-        <path d="M1 27 V15 A8 8 0 0 1 17 15 V27 M17 27 V15 A8 8 0 0 1 33 15 V27" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-        <path d="M0 27 H34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-      <span className="leading-none">
-        <span className="block font-display text-[15px] font-semibold tracking-[0.16em] sm:text-base">GLOBALTRAVELASSI</span>
+      <LogoMark className="size-9 shrink-0 text-champagne-300" />
+      <span className="font-display text-[14px] font-semibold uppercase leading-none tracking-[0.18em] text-white sm:text-[15px]">
+        GLOBALTRAVELASSI
       </span>
     </span>
   );

@@ -9,6 +9,8 @@ import { Container, Section, SectionHeading, ButtonLink } from "@/components/ui"
 import { CinematicBackdrop } from "@/components/site/CinematicBackdrop";
 import { ServiceCard } from "@/components/site/ServiceCard";
 import { Reveal } from "@/components/Reveal";
+import { popularDestinations, flagEmoji } from "@/lib/destinations";
+import { countryName } from "@/lib/i18n";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale: raw } = await params;
@@ -101,8 +103,25 @@ export default async function HomePage({
         </Container>
       </section>
 
+      {/* Credibility strip */}
+      <section aria-label={dict.home.trustTitle} className="border-b border-mist-200 bg-white">
+        <Container className="grid gap-px py-2 md:grid-cols-3">
+          {dict.home.credibility.map((item, i) => (
+            <Reveal key={item.title} delay={i * 80}>
+              <div className="flex h-full items-start gap-4 px-2 py-6 md:px-6">
+                <span className="mt-1 inline-block h-8 w-px shrink-0 bg-champagne-400" aria-hidden />
+                <div>
+                  <p className="font-display text-lg font-semibold text-navy-900">{item.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-navy-600">{item.text}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </Container>
+      </section>
+
       {/* Services */}
-      <Section id="services" className="-mt-24 relative z-10">
+      <Section id="services">
         <Container>
           <Reveal>
             <SectionHeading eyebrow={dict.nav.services} title={dict.home.servicesTitle} subtitle={dict.home.servicesSubtitle} />
@@ -141,6 +160,50 @@ export default async function HomePage({
         </Container>
       </Section>
 
+      {/* Why choose us */}
+      <Section>
+        <Container>
+          <Reveal>
+            <SectionHeading eyebrow={dict.home.trustTitle} title={dict.home.whyTitle} subtitle={dict.home.whySubtitle} />
+          </Reveal>
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {dict.home.why.map((item, i) => (
+              <Reveal key={item.title} delay={i * 90}>
+                <div className="h-full rounded-3xl border border-mist-200 bg-mist-50 p-7 transition duration-500 hover:-translate-y-1 hover:border-champagne-300 hover:bg-white hover:shadow-xl hover:shadow-navy-900/5">
+                  <span className="flex size-11 items-center justify-center rounded-2xl bg-navy-900 font-display text-champagne-300">{i + 1}</span>
+                  <h3 className="mt-5 font-display text-xl font-semibold text-navy-900">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-navy-600">{item.text}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Container>
+      </Section>
+
+      {/* Popular destinations */}
+      <Section className="bg-mist-50">
+        <Container>
+          <Reveal>
+            <SectionHeading eyebrow={dict.services.title} title={dict.home.destinationsTitle} subtitle={dict.home.destinationsText} />
+          </Reveal>
+          <ul className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {popularDestinations.map((code, i) => (
+              <Reveal key={code} delay={i * 60}>
+                <li>
+                  <Link
+                    href={applyHref(locale, { source, service: undefined })}
+                    className="group flex items-center gap-4 rounded-2xl border border-mist-200 bg-white p-5 transition duration-300 hover:-translate-y-0.5 hover:border-champagne-400 hover:shadow-lg hover:shadow-navy-900/5"
+                  >
+                    <span className="text-3xl" aria-hidden>{flagEmoji(code)}</span>
+                    <span className="font-semibold text-navy-900 group-hover:text-champagne-600">{countryName(code, locale)}</span>
+                  </Link>
+                </li>
+              </Reveal>
+            ))}
+          </ul>
+        </Container>
+      </Section>
+
       {/* European journeys */}
       <section className="relative isolate overflow-hidden bg-navy-950 py-20 text-white sm:py-28">
         <CinematicBackdrop variant="band" />
@@ -159,6 +222,26 @@ export default async function HomePage({
           </Reveal>
         </Container>
       </section>
+
+      {/* FAQ */}
+      <Section>
+        <Container className="max-w-3xl">
+          <Reveal>
+            <SectionHeading eyebrow={dict.nav.services} title={dict.home.faqTitle} />
+          </Reveal>
+          <div className="mt-10 divide-y divide-mist-200 rounded-3xl border border-mist-200 bg-white">
+            {dict.home.faq.map((item) => (
+              <details key={item.q} className="group px-6 py-5 sm:px-8">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-start font-semibold text-navy-900 marker:hidden [&::-webkit-details-marker]:hidden">
+                  <span>{item.q}</span>
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-mist-100 text-champagne-600 transition group-open:rotate-45" aria-hidden>+</span>
+                </summary>
+                <p className="mt-4 text-sm leading-relaxed text-navy-600 sm:text-base">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </Container>
+      </Section>
 
       {/* Final call to action */}
       <Section>
