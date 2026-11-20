@@ -197,3 +197,36 @@ export function health(input: {
     agentErrorRate: input.runs.length > 0 ? failed / input.runs.length : null,
   };
 }
+
+export interface AgentDayPoint {
+  agent: string;
+  day: string;
+  runs: number;
+  succeeded: number;
+  failed: number;
+  /** Null when the agent had no runs that day. Never zero by default. */
+  failureRate: number | null;
+}
+
+/**
+ * Agent runs per day over the last `days` days, per agent. Days without runs are omitted rather than
+ * filled with zeros, so a quiet day is not mistaken for a failing one.
+ */
+export function performanceHistory(runs: RunSample[], now: Date, days = 14): AgentDayPoint[] {
+  const oldest = now.getTime() - days * 86_400_000;
+  const buckets = new Map<string, { agent: string; day: string; runs: number; succeeded: number; failed: number }>();
+  for (const r of runs) {
+    const at = Date.parse(r.finishedAt);
+    if (Number.isNaN(at) || at < oldest || at > now.getTime()) continue;
+    const day = new Date(at).toISOString().slice(0, 10);
+    const key = `${r.agent}|${day}`;
+    const b = buckets.get(key) ?? { agent: r.agent, day, runs: 0, succeeded: 0, failed: 0 };
+    b.runs += 1;
+    if (r.status === "succeeded") b.succeeded += 1;
+    if (r.status === "failed") b.failed += 1;
+    buckets.set(key, b);
+  }
+  return [...buckets.values()]
+    .map((b) => ({ ...b, failureRate: b.runs > 0 ? b.failed / b.runs : null }))
+    .sort((a, b) => a.agent.localeCompare(b.agent) || a.day.localeCompare(b.day));
+}

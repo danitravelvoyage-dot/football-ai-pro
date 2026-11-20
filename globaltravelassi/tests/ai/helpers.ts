@@ -69,6 +69,8 @@ export function makeHarness(options: {
   providers?: { config: ProviderConfig; provider: LLMProvider }[];
   visaAllowlist?: string[];
   start?: string;
+  briefing?: () => Promise<{ scope: string; key: string; value: unknown }[]>;
+  notify?: (notice: import("@/lib/ai/notifications/rules").Notice) => Promise<unknown>;
 } = {}) {
   const clock = makeClock(options.start);
   const store = new MemoryTaskStore();
@@ -101,6 +103,8 @@ export function makeHarness(options: {
     context: platform.context,
     knowledge: platform.knowledge,
     quality: platform.quality,
+    briefing: options.briefing,
+    notify: options.notify,
   });
   return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge, quality: platform.quality };
 }

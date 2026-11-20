@@ -15,6 +15,7 @@ import type { ContextService } from "../context/service";
 import type { KbService } from "../knowledge/service";
 import type { QualityController } from "../quality/controller";
 import { claimsOf } from "../quality/extract";
+import { taskFailedNotice, type Notice } from "../notifications/rules";
 import type { Claim } from "../quality/types";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
 import type { AgentRunRecord, TaskRecord } from "./records";
@@ -53,6 +54,13 @@ export interface OrchestratorDeps {
   knowledge: KbService;
   /** Quality controller. Every model output is reviewed before it is stored or used. */
   quality: QualityController;
+  /**
+   * Owner memory prepared for agents (decisions, evidence-backed learning). Optional: when absent, agents run
+   * with shared context only. Called by the platform for each agent task; agents never call it.
+   */
+  briefing?: () => Promise<{ scope: string; key: string; value: unknown }[]>;
+  /** Owner inbox. A terminal task failure is reported here. A failed notice never changes task state. */
+  notify?: (notice: Notice) => Promise<unknown>;
 }
 
 export interface TickReport {
@@ -294,11 +302,19 @@ export class Orchestrator {
     const actor = `agent:${task.agent}`;
     try {
       const upstream = await this.upstreamOutputs(task);
-      const context = await this.deps.context.forAgent(task.agent, task.runId);
+      const shared = await this.deps.context.forAgent(task.agent, task.runId);
+      const briefing = step.deterministic || !this.deps.briefing ? [] : await this.deps.briefing();
+      const feedback = step.deterministic ? [] : await this.revisionFeedback(task);
+      const context = [...briefing, ...feedback, ...shared];
       const knowledge = step.deterministic
         ? []
         : await this.deps.knowledge.forAgent(task.agent, { country: task.input.country, language: task.input.language });
-      await this.audit(actor, "agent.inputs_loaded", "task", task.id, { context: context.length, knowledge: knowledge.length });
+      await this.audit(actor, "agent.inputs_loaded", "task", task.id, {
+        context: context.length,
+        briefing: briefing.length,
+        revisionFeedback: feedback.length,
+        knowledge: knowledge.length,
+      });
       const input: AgentInput = { ...task.input, upstream, context, knowledge };
       const result = step.deterministic
         ? this.runDeterministic(step.deterministic, input)
@@ -403,6 +419,7 @@ export class Orchestrator {
       const reason = `Quality rejected the output: ${codes}`;
       await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: reason }, nowIso);
       await this.audit(`agent:${task.agent}`, "task.quality_rejected", "task", task.id, { attempt: review.attempt, codes });
+      await this.notifyFailure(task, reason);
       await this.publishSafely({
         type: "task.failed",
         producer: task.agent,
@@ -426,6 +443,18 @@ export class Orchestrator {
     });
     await this.audit(`agent:${task.agent}`, "task.waiting_approval", "task", task.id, { reason: "quality_human_review", codes });
     return "waitingApproval";
+  }
+
+  /**
+   * The feedback from the latest review, but only when that review asked for a revision. Once a later review
+   * has passed or been rejected, the old feedback is no longer sent. Feedback holds locations and instructions,
+   * never the reviewed text.
+   */
+  private async revisionFeedback(task: TaskRecord): Promise<{ scope: string; key: string; value: unknown }[]> {
+    const reviews = [...(await this.deps.quality.history({ kind: "system" }, task.id))].sort((a, b) => a.attempt - b.attempt);
+    const latest = reviews.at(-1);
+    if (!latest || latest.status !== "NEEDS_REVISION" || latest.feedback.length === 0) return [];
+    return [{ scope: "revision", key: "quality.feedback", value: { attempt: latest.attempt, feedback: latest.feedback } }];
   }
 
   private stepFor(task: TaskRecord): WorkflowStep {
@@ -508,6 +537,7 @@ export class Orchestrator {
 
     await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: message }, this.deps.now().toISOString());
     await this.audit(`agent:${task.agent}`, "task.failed", "task", task.id, { error: message, terminal: TERMINAL_FAILURE });
+    await this.notifyFailure(task, message);
     this.deps.logger.error("task.failed", { taskId: task.id, agent: task.agent, error: message });
     await this.publishSafely({
       type: "task.failed",
@@ -598,6 +628,16 @@ export class Orchestrator {
       });
     } catch (error) {
       this.deps.logger.error("context.brief_not_saved", { reason: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+
+  /** Reports a terminal failure to the owner. A failed notification is logged; it never changes task state. */
+  private async notifyFailure(task: TaskRecord, reason: string): Promise<void> {
+    if (!this.deps.notify) return;
+    try {
+      await this.deps.notify(taskFailedNotice(task, reason.slice(0, 300)));
+    } catch (error) {
+      this.deps.logger.error("notification.failed", { reason: error instanceof Error ? error.name : "unknown" });
     }
   }
 

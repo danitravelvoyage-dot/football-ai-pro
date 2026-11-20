@@ -1,7 +1,7 @@
 # GLOBALTRAVELASSI: project status and audit
 
 Status date: 2026-11-20. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database.
+No migration has been applied to any database (0002 to 0012 are all unapplied).
 
 ## Verification (this change)
 
@@ -9,12 +9,24 @@ No migration has been applied to any database.
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 35 files, 500 tests, all passing (435 before this change) |
+| `npm test` (vitest) | 38 files, 527 tests, all passing (500 at the previous checkpoint, 435 before the scheduler) |
 | `npm run build` | passes; `/api/ai/scheduler` and `/[locale]/admin/command-center/scheduler` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
 | SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal |
 
 Not verified: a live database with migrations 0002 to 0011 applied; two real database connections racing for a lease; an authenticated browser run of the scheduler page; a live AI provider.
+
+## Session 2 additions (business intelligence and notifications)
+
+Built and tested:
+
+1. **Business memory reaches agents.** `lib/ai/memory/briefing.ts` builds a read-only briefing: rejected and retired strategies, strategies not reviewed for 90 days, and learning that passed the evidence gate. `MemoryService.briefing()` accepts only the owner or the platform; an agent is refused. The engine attaches the briefing to each agent task (`context` key `owner.decisions` and `learning.evidence`). Agents never query the memory store. The company profile already reached agents through team-visible shared context.
+2. **Quality feedback reaches the retry.** If the latest review asked for a revision, the next attempt receives its locations and instructions (`revision` / `quality.feedback`). Once a later review passes or rejects, old feedback is no longer sent. Feedback never includes the reviewed text.
+3. **Agent performance history (data).** `performanceHistory()` gives runs per agent per day. Days without runs are omitted, not shown as zero. No UI yet.
+4. **Owner notifications.** Inbox with dedupe keys (one row per notice), personal-data refusal, owner-only read and mark-read, migration 0012 (not applied) with a read-once guard trigger. Notices come from terminal task failures (critical), overdue scheduled work (warning, once a day), and a daily agent summary (info or warning, once a day).
+5. **Scheduler and notifications.** A missing worker cannot notify from inside the scheduler. It shows on the pages, but no notice is sent yet. An independent check is required.
+
+Not built in this session: the inbox page, the scheduled owner report, scheduler-health notices from an independent check, campaign management, content review and approval dashboard, knowledge base admin forms, the marketing command center redesign, and the performance history chart.
 
 ## Architecture (summary)
 
@@ -76,7 +88,7 @@ Priority order follows the brief's list.
 - **Content generation and approval (8):** content agents and approval gating exist. No provider is connected, and nothing is published.
 - **Analytics and performance (9):** monitoring and observability exist. The analytics workflow uses deterministic aggregation only. No live data source.
 - **Lead management and sales automation (10):** the sales workflow runs with the mock provider. No CRM integration.
-- **Notifications and reporting (11):** not started. No notification or report module exists.
+- **Notifications and reporting (11):** core built (inbox service, rules, triggers, migration 0012 unapplied). Missing: the inbox page, the scheduled owner report, and an independent check for a missing worker.
 - **Admin dashboard and owner controls (12):** mostly built. Knowledge base create and edit forms are not built; the knowledge base is read-only in the dashboard.
 - **Agents and business memory:** agents do not yet read business memory or quality feedback.
 - **Scheduled reports:** would use the scheduler, but no report job kind exists yet.
@@ -93,7 +105,7 @@ Priority order follows the brief's list.
 
 ## Completion
 
-Estimated **about 45%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure: 10 of 17 modules are built and tested, 5 are partial, and 2 are not started.
+Estimated **about 50%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward; the modules are still counted as partial until their owner-facing parts exist.
 
 ## Recommended next priorities
 

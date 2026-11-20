@@ -1,3 +1,4 @@
+import { buildBriefing, type BriefingItem } from "./briefing";
 import { z } from "zod";
 import type { AuditSink } from "../audit";
 import { assertNoPersonalData, PersonalDataError } from "../security/personal-data";
@@ -101,6 +102,21 @@ export class MemoryService {
   async rejectedStrategies(actor: Actor): Promise<DecisionRecord[]> {
     if (actor.kind === "agent") throw new MemoryForbiddenError("Agents cannot read owner decisions.");
     return (await this.deps.store.latestDecisionsBySubject("strategy")).filter((d) => d.decision === "rejected");
+  }
+
+  /**
+   * The owner memory an agent run receives. Built by the platform for one run: agents never call this.
+   * Refused for agents, so an agent cannot ask for the owner's decisions directly.
+   */
+  async briefing(actor: Actor): Promise<BriefingItem[]> {
+    if (actor.kind === "agent") throw new MemoryForbiddenError("Agents cannot read owner memory directly.");
+    const [decisions, experiments, results, settings] = await Promise.all([
+      this.deps.store.latestDecisionsBySubject(),
+      this.deps.store.listExperiments(),
+      this.deps.store.listResults(),
+      this.learningSettings(actor),
+    ]);
+    return buildBriefing({ decisions, experiments, results, settings, now: this.deps.now() });
   }
 
   // ----- experiments -----

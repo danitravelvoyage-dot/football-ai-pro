@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agentBoard, performance, usageSummary, alertsFor, health, STALL_MINUTES, REPEATED_FAILURE_THRESHOLD, type TaskSample, type RunSample } from "@/lib/ai/observability/metrics";
+import { agentBoard, performance, usageSummary, alertsFor, health, STALL_MINUTES, REPEATED_FAILURE_THRESHOLD, type TaskSample, type RunSample, performanceHistory } from "@/lib/ai/observability/metrics";
 
 const NOW = new Date("2026-11-20T10:00:00.000Z");
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -111,5 +111,34 @@ describe("system health", () => {
   it("with no runs, the error rate is unknown, not zero", () => {
     const h = health({ deliveries: { pending: 0, delivered: 0, dead: 0 }, database: { ok: true, latencyMs: null }, runs: [], workflowsWithFailures: 0, workflowsTotal: 0, scheduler: null });
     expect(h.agentErrorRate).toBeNull();
+  });
+});
+
+describe("agent performance history", () => {
+  const NOW = new Date("2026-11-20T12:00:00.000Z");
+  it("counts runs per agent per day, and a quiet day is omitted rather than shown as zero", () => {
+    const history = performanceHistory(
+      [
+        run({ agent: "SalesAgent", status: "succeeded", finishedAt: "2026-11-20T08:00:00.000Z" }),
+        run({ agent: "SalesAgent", status: "failed", finishedAt: "2026-11-20T09:00:00.000Z" }),
+        run({ agent: "SalesAgent", status: "succeeded", finishedAt: "2026-11-18T09:00:00.000Z" }),
+        run({ agent: "SEOAgent", status: "succeeded", finishedAt: "2026-11-20T10:00:00.000Z" }),
+      ],
+      NOW,
+    );
+    expect(history).toEqual([
+      { agent: "SalesAgent", day: "2026-11-18", runs: 1, succeeded: 1, failed: 0, failureRate: 0 },
+      { agent: "SalesAgent", day: "2026-11-20", runs: 2, succeeded: 1, failed: 1, failureRate: 0.5 },
+      { agent: "SEOAgent", day: "2026-11-20", runs: 1, succeeded: 1, failed: 0, failureRate: 0 },
+    ]);
+  });
+
+  it("runs older than the window, or in the future, are left out", () => {
+    const history = performanceHistory(
+      [run({ finishedAt: "2026-10-01T00:00:00.000Z" }), run({ finishedAt: "2026-11-25T00:00:00.000Z" })],
+      NOW,
+      14,
+    );
+    expect(history).toEqual([]);
   });
 });

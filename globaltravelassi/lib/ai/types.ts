@@ -82,8 +82,8 @@ export const agentInputSchema = z.object({
     .default([]),
   /** Shared context this agent is allowed to read (see the context access rules). */
   context: z
-    .array(z.object({ scope: z.string().max(20), key: z.string().max(80), value: z.unknown() }))
-    .max(20)
+    .array(z.object({ scope: z.string().max(30), key: z.string().max(80), value: z.unknown() }))
+    .max(30)
     .default([]),
   /** Verified, current knowledge-base facts only. Unverified or stale entries never reach an agent. */
   knowledge: z

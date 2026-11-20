@@ -42,6 +42,18 @@ Every step writes an audit event (`scheduler.job_enqueued`, `scheduler.job_start
 | Persistent state | jobs, heartbeats and settings are rows; a new process continues from them | `persistent state` unit test |
 | Trigger authentication | bearer secret compared as SHA-256 digests in constant time; no default secret; refuses below 32 characters | `tests/ai/scheduler-route.test.ts` and a live probe |
 
+## Notices from the scheduler
+
+The owner's inbox receives these notices from the scheduler (see `lib/ai/notifications/`):
+
+- **Overdue scheduled work** (warning, once per day). Raised after a run when queued slots are past their grace period.
+- **Daily agent summary** (info, or warning when an agent's failure rate is 25% or more). Written by the cycle once per day.
+- **Terminal task failure** (critical, once per task). Raised by the orchestrator when a task fails for good.
+
+Limit: a worker that never runs cannot report its own absence. The "no recent worker" status appears on the
+scheduler and monitor pages, but no notice is sent for it yet. An independent check (for example a second external
+cron that reads the status) is needed for that case.
+
 ## Owner settings
 
 Open **Admin → Command center → Scheduler**. The owner can:
@@ -106,3 +118,4 @@ Until all five are in place, the scheduler does nothing, and the status page sho
 - `lib/actions/scheduler.ts`: the owner's settings action.
 - `app/api/ai/scheduler/route.ts`: the trigger endpoint.
 - `supabase/migrations/0011_scheduler.sql`: the queue, heartbeats, settings and functions (not applied).
+- `lib/ai/notifications/*` and `supabase/migrations/0012_owner_notifications.sql`: the owner inbox (not applied).

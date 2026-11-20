@@ -12,6 +12,7 @@ import {
   type SchedulerSettings,
 } from "./schedule";
 import type { JobStatus, SchedulerJob, SchedulerStore, WorkerHeartbeat } from "./store";
+import { schedulerNotice, type Notice } from "../notifications/rules";
 
 /** Jobs one invocation may lease at a time. Each cycle is short; a backlog drains over several invocations. */
 export const LEASE_BATCH = 3;
@@ -67,6 +68,8 @@ export interface SchedulerServiceDeps {
   /** Stable name of this scheduler. Shown in the heartbeat table. */
   workerName: string;
   deadEventDeliveries?: () => Promise<number>;
+  /** Owner inbox. Overdue work is reported once per day after a run. */
+  notify?: (notice: Notice) => Promise<unknown>;
 }
 
 /**
@@ -136,6 +139,7 @@ export class SchedulerService {
     }
 
     await this.heartbeat(`ran:${report.leased}`, lease.leased.at(-1)?.id ?? null);
+    await this.reportOverdue();
     return report;
   }
 
@@ -177,6 +181,17 @@ export class SchedulerService {
     } else {
       report.deadLettered += 1;
       await this.audit("scheduler.job_dead_lettered", job.id, { attempts: job.attempts, error: message });
+    }
+  }
+
+  /** Overdue work is visible from inside a run. A worker that never runs is not, so that case needs an independent check. */
+  private async reportOverdue(): Promise<void> {
+    if (!this.deps.notify) return;
+    try {
+      const notice = schedulerNotice(await this.health(), this.deps.now().toISOString().slice(0, 10));
+      if (notice) await this.deps.notify(notice);
+    } catch (error) {
+      this.deps.logger.error("scheduler.notify_failed", { reason: error instanceof Error ? error.name : "unknown" });
     }
   }
 
