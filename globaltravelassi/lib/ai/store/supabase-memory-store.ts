@@ -180,6 +180,17 @@ export class SupabaseMemoryStore implements MemoryStore {
     return ((data ?? []) as Row[]).map(toResult);
   }
 
+  async getSetting(key: string) {
+    const { data, error } = await this.db.from("ai_settings").select("value").eq("key", key).maybeSingle();
+    if (error) fail(error);
+    return data ? (data as { value: unknown }).value : null;
+  }
+
+  async setSetting(key: string, value: unknown, at: string) {
+    const { error } = await this.db.from("ai_settings").upsert({ key, value, updated_at: at }, { onConflict: "key" });
+    if (error) fail(error);
+  }
+
   async listResults() {
     const { data, error } = await this.db.from("ai_experiment_results").select("*").order("recorded_at", { ascending: false }).limit(ANALYSIS_LIMIT);
     if (error) fail(error);

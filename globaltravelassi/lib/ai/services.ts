@@ -14,6 +14,8 @@ import { SupabaseAuditSink, SupabaseTaskStore, SupabaseUsageStore } from "./stor
 import { SupabaseEventStore } from "./store/supabase-event-store";
 import { SupabaseContextStore, SupabaseKbStore } from "./store/supabase-platform-store";
 import { SupabaseQualityStore } from "./store/supabase-quality-store";
+import { SupabaseMemoryStore } from "./store/supabase-memory-store";
+import { MemoryService } from "./memory/service";
 import { buildPlatform } from "./platform";
 import type { ContextService } from "./context/service";
 import type { KbService } from "./knowledge/service";
@@ -47,6 +49,7 @@ export interface AiServices {
   context: ContextService;
   knowledge: KbService;
   quality: QualityController;
+  memory: MemoryService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -88,7 +91,8 @@ export async function createAiServices(): Promise<AiServices> {
     knowledge: platform.knowledge,
     quality: platform.quality,
   });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, audit, usage, providers: configs };
+  const memory = new MemoryService({ store: new SupabaseMemoryStore(db), audit, now, newId });
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

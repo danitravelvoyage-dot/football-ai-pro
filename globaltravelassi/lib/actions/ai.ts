@@ -8,7 +8,7 @@ import { formObject, localeFrom, parseWith } from "./helpers";
 import type { ActionState } from "./types";
 
 /** Returns the owner's id only for an active administrator. Every AI action starts here. */
-async function ownerId(): Promise<string | null> {
+export async function ownerId(): Promise<string | null> {
   const supabase = await createServerSupabase();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;

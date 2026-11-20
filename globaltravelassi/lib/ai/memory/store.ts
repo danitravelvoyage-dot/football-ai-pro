@@ -45,6 +45,9 @@ export interface MemoryStore {
   insertResult(r: Omit<ResultRecord, "id">): Promise<ResultRecord>;
   resultsFor(experimentId: string): Promise<ResultRecord[]>;
   listResults(): Promise<ResultRecord[]>;
+  /** Owner settings, stored as JSON under a key. Null when the owner has not set the key. */
+  getSetting(key: string): Promise<unknown | null>;
+  setSetting(key: string, value: unknown, at: string): Promise<void>;
 }
 
 /** In-memory memory store with the same rules. Used by tests and local development. */
@@ -120,5 +123,15 @@ export class MemoryMemoryStore implements MemoryStore {
 
   async listResults() {
     return [...this.results];
+  }
+
+  private settings = new Map<string, unknown>();
+
+  async getSetting(key: string) {
+    return this.settings.has(key) ? this.settings.get(key) : null;
+  }
+
+  async setSetting(key: string, value: unknown) {
+    this.settings.set(key, value);
   }
 }

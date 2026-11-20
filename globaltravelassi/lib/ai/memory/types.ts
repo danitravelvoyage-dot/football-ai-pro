@@ -4,12 +4,27 @@ export const SUBJECT_TYPES = ["approval", "strategy", "campaign", "pricing", "se
 export const DECISIONS = ["approved", "rejected", "changed", "retired"] as const;
 export const EXPERIMENT_KINDS = ["campaign", "content", "sales"] as const;
 export const METRICS = ["impressions", "clicks", "leads", "applications", "conversions", "revenue", "reply_rate"] as const;
+export const RESULT_SOURCES = ["aggregate", "manual", "import"] as const;
 export const COUNT_METRICS = ["impressions", "clicks", "leads", "applications", "conversions"] as const;
 
-/** Minimum sample before a comparison counts as evidence. Below it the result is recorded but never recommended on. */
+/** Defaults. The owner can change them; the values in force are stored in ai_settings under "learning". */
 export const MIN_EVIDENCE_SAMPLE = 30;
-/** Relative lift between two variants needed to call a winner. */
 export const MIN_RELATIVE_LIFT = 0.2;
+export const LEARNING_SETTINGS_KEY = "learning";
+
+export interface LearningSettings {
+  /** Minimum sample before a comparison counts as evidence. */
+  minSample: number;
+  /** Relative lift between two variants needed to call a winner, as a fraction (0.2 = 20 percent). */
+  minLift: number;
+}
+
+export const DEFAULT_LEARNING_SETTINGS: LearningSettings = { minSample: MIN_EVIDENCE_SAMPLE, minLift: MIN_RELATIVE_LIFT };
+
+export const learningSettingsSchema = z.object({
+  minSample: z.number().int().min(5).max(100_000),
+  minLift: z.number().min(0.01).max(5),
+});
 /** Days after which an approved strategy with no newer decision is considered outdated. */
 export const OUTDATED_AFTER_DAYS = 90;
 

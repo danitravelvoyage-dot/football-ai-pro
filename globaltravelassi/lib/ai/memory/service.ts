@@ -2,7 +2,18 @@ import { z } from "zod";
 import type { AuditSink } from "../audit";
 import { assertNoPersonalData, PersonalDataError } from "../security/personal-data";
 import type { Actor } from "../types";
-import { decisionInputSchema, experimentInputSchema, resultInputSchema, type DecisionInput, type ExperimentInput, type ResultInput } from "./types";
+import {
+  DEFAULT_LEARNING_SETTINGS,
+  LEARNING_SETTINGS_KEY,
+  decisionInputSchema,
+  experimentInputSchema,
+  learningSettingsSchema,
+  resultInputSchema,
+  type DecisionInput,
+  type ExperimentInput,
+  type LearningSettings,
+  type ResultInput,
+} from "./types";
 import type { DecisionRecord, ExperimentRecord, MemoryStore, ResultRecord } from "./store";
 
 export class MemoryForbiddenError extends Error {
@@ -113,6 +124,24 @@ export class MemoryService {
     const updated = await this.deps.store.updateExperimentStatus(id, status, this.deps.now().toISOString());
     await this.audit(actor, "experiment.status", "experiment", id, { status });
     return updated;
+  }
+
+  /** The thresholds in force. Falls back to the defaults until the owner sets them. */
+  async learningSettings(actor: Actor): Promise<LearningSettings> {
+    if (actor.kind === "agent") throw new MemoryForbiddenError("Agents cannot read the learning thresholds.");
+    const stored = await this.deps.store.getSetting(LEARNING_SETTINGS_KEY);
+    if (stored === null) return DEFAULT_LEARNING_SETTINGS;
+    const parsed = learningSettingsSchema.safeParse(stored);
+    return parsed.success ? parsed.data : DEFAULT_LEARNING_SETTINGS;
+  }
+
+  /** Owner only. Bounds are checked here, so an out-of-range value never reaches the learning calculations. */
+  async setLearningSettings(actor: Actor, input: LearningSettings): Promise<LearningSettings> {
+    if (actor.kind !== "owner") throw new MemoryForbiddenError("Only the owner changes the learning thresholds.");
+    const v = parse(learningSettingsSchema, input);
+    await this.deps.store.setSetting(LEARNING_SETTINGS_KEY, v, this.deps.now().toISOString());
+    await this.audit(actor, "learning.settings", "settings", LEARNING_SETTINGS_KEY, { minSample: v.minSample, minLift: v.minLift });
+    return v;
   }
 
   async recordResult(actor: Actor, experimentId: string, input: ResultInput): Promise<ResultRecord> {
