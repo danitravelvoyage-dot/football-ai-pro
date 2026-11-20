@@ -60,6 +60,7 @@ export class AgentRuntime {
 
     const system = [
       def.prompt.system,
+      "Facts: use only the knowledge entries and shared context provided below. Never invent a fact, date, price or requirement.",
       "Boundaries:",
       ...def.boundaries.map((b) => `- ${b}`),
     ].join("\n");
@@ -71,6 +72,8 @@ export class AgentRuntime {
       data: input.data,
       aggregates: input.aggregates,
       upstream: input.upstream,
+      context: input.context,
+      knowledge: input.knowledge,
     });
 
     const response = await this.gateway.complete({

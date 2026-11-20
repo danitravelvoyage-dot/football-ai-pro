@@ -16,7 +16,7 @@ function task(id: string, status: TaskRecord["status"], extra: Partial<TaskRecor
     priority: 5,
     dueAt: null,
     dependsOn: [],
-    input: { objective: "o", language: "fr", country: "dz", brief: "", data: {}, aggregates: [], upstream: [] },
+    input: { objective: "o", language: "fr", country: "dz", brief: "", data: {}, aggregates: [], upstream: [], context: [], knowledge: [] },
     output: null,
     actionClass: null,
     requiresApproval: false,

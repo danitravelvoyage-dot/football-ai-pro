@@ -1,6 +1,8 @@
 import { AGENT_KEYS, type AgentKey, type TaskStatus } from "../types";
 import { DEPARTMENTS } from "../departments";
 import type { TaskRecord } from "../orchestration/records";
+import type { DeliveryStatus } from "../events/store";
+import type { Freshness } from "../knowledge/rules";
 
 /**
  * Pure helpers for the command-center pages. No database or server-only imports here,
@@ -138,7 +140,59 @@ export function truncate(text: string, max: number): string {
 }
 
 /** Core modules and their build state. Static on purpose: this is a statement about the code, not a metric. */
+/**
+ * Module status. "Built" means implemented and covered by automated tests on the local branch.
+ * Live-database checks are a separate step, reported separately in the phase report.
+ */
 export const CORE_MODULES = {
-  built: ["AGENT_REGISTRY", "AGENT_EXECUTOR", "TASK_ORCHESTRATOR", "WORKFLOW_ENGINE", "APPROVAL_ENGINE", "AUDIT_LOG", "USAGE_MONITOR", "ERROR_RECOVERY", "QUOTA_ENFORCEMENT"],
-  notBuilt: ["SHARED_CONTEXT", "KNOWLEDGE_BASE", "EVENT_BUS"],
+  built: [
+    "AGENT_REGISTRY",
+    "AGENT_EXECUTOR",
+    "TASK_ORCHESTRATOR",
+    "WORKFLOW_ENGINE",
+    "APPROVAL_ENGINE",
+    "AUDIT_LOG",
+    "USAGE_MONITOR",
+    "ERROR_RECOVERY",
+    "QUOTA_ENFORCEMENT",
+    "EVENT_BUS",
+    "SHARED_CONTEXT",
+    "KNOWLEDGE_BASE",
+  ],
+  notBuilt: [],
 } as const;
+
+export function deliveryTone(status: DeliveryStatus): BadgeTone {
+  if (status === "delivered") return "success";
+  if (status === "dead") return "danger";
+  return "warning";
+}
+
+export function freshnessTone(freshness: Freshness): BadgeTone {
+  if (freshness === "current") return "success";
+  if (freshness === "stale") return "warning";
+  if (freshness === "excluded") return "danger";
+  return "neutral";
+}
+
+/** Returns the address only when it is an https link. Anything else is shown as text, never as a link. */
+export function safeHttpsUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A readable, bounded preview of stored JSON. */
+export function previewJson(value: unknown, max: number): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value ?? null, null, 2) ?? "null";
+  } catch {
+    text = "[unreadable]";
+  }
+  return truncate(text, max);
+}

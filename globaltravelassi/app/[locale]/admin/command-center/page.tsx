@@ -22,7 +22,7 @@ export default async function CommandCenterOverview({ params }: { params: Promis
   const state = await loadCommandCenter();
   if (state.status !== "ok") return <LoadState kind={state.status} dict={dict} />;
 
-  const { report, tasks, runs, approvals, honestyProblems, taskCapReached } = state;
+  const { report, tasks, runs, approvals, honestyProblems, runsTruncated } = state;
   const departments = rollupByDepartment(tasks);
   const providers = loadProviderConfig(process.env).map((p) => ({ id: p.id, kind: p.kind, enabled: p.enabled }));
   const liveProviderEnabled = providers.some((p) => p.kind !== "mock" && p.enabled);
@@ -43,7 +43,7 @@ export default async function CommandCenterOverview({ params }: { params: Promis
         <StatCard label={t.kpiSucceeded} value={report.counts.succeeded} />
       </div>
 
-      {taskCapReached && <Alert tone="warning">{t.taskCap}</Alert>}
+      {runsTruncated && <Alert tone="warning">{t.runScopeNote}</Alert>}
 
       <div className="grid gap-8 lg:grid-cols-5">
         <div className="lg:col-span-3">

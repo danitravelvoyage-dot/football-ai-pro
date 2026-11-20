@@ -11,6 +11,12 @@ import { Orchestrator } from "./orchestration/engine";
 import type { TaskStore } from "./orchestration/store";
 import { AgentRuntime } from "./runtime";
 import { SupabaseAuditSink, SupabaseTaskStore, SupabaseUsageStore } from "./store/supabase-store";
+import { SupabaseEventStore } from "./store/supabase-event-store";
+import { SupabaseContextStore, SupabaseKbStore } from "./store/supabase-platform-store";
+import { buildPlatform } from "./platform";
+import type { ContextService } from "./context/service";
+import type { KbService } from "./knowledge/service";
+import type { EventBus } from "./events/bus";
 import type { AuditSink } from "./audit";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
@@ -35,6 +41,9 @@ export function buildProviders(configs: ProviderConfig[]): { config: ProviderCon
 export interface AiServices {
   orchestrator: Orchestrator;
   store: TaskStore;
+  events: EventBus;
+  context: ContextService;
+  knowledge: KbService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -58,6 +67,10 @@ export async function createAiServices(): Promise<AiServices> {
   const now = () => new Date();
   const approvals = new ApprovalService({ store, audit, now, newId });
   const visaHosts = await loadVisaAllowlist(db);
+  const platform = buildPlatform(
+    { tasks: store, events: new SupabaseEventStore(db), context: new SupabaseContextStore(db), knowledge: new SupabaseKbStore(db), audit },
+    { now, newId },
+  );
   const orchestrator = new Orchestrator({
     store,
     runtime,
@@ -67,8 +80,11 @@ export async function createAiServices(): Promise<AiServices> {
     now,
     newId,
     visaAllowlist: () => visaHosts,
+    events: platform.events,
+    context: platform.context,
+    knowledge: platform.knowledge,
   });
-  return { orchestrator, store, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

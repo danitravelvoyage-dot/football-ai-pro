@@ -3,8 +3,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditEvent, AuditSink } from "../audit";
 import { assertTransition } from "../orchestration/state";
 import type { AgentRunRecord, ApprovalRecord, ArtifactRecord, TaskRecord, WorkflowRunRecord } from "../orchestration/records";
-import { ConcurrencyError, type NewRun, type NewTask, type TaskPatch, type TaskStore } from "../orchestration/store";
-import type { ActionClass, AgentKey, TaskStatus } from "../types";
+import {
+  ConcurrencyError,
+  OPEN_TASK_STATUSES,
+  type NewRun,
+  type NewTask,
+  type TaskCursor,
+  type TaskPage,
+  type TaskPatch,
+  type TaskStore,
+} from "../orchestration/store";
+import { TASK_STATUSES, type ActionClass, type AgentKey, type TaskStatus } from "../types";
 import type { UsageStore } from "../llm/gateway";
 
 /**
@@ -13,8 +22,32 @@ import type { UsageStore } from "../llm/gateway";
  */
 type Row = Record<string, unknown>;
 
-/** Upper bound for task reads. Listing is oldest first, so newer rows need pagination before they can be shown. */
-export const TASK_QUERY_LIMIT = 500;
+/**
+ * Rows fetched per request. Kept below the project's default row ceiling (1000), so a query that
+ * pages through every row never loses rows silently.
+ */
+export const PAGE_SIZE = 500;
+
+/** Run ids per `in (...)` filter, to keep request URLs short. */
+const RUN_ID_CHUNK = 50;
+
+const TASK_SELECT = "*, ai_task_dependencies!task_id(depends_on_task_id)";
+
+/** Cursor values are interpolated into a PostgREST filter, so they must be exactly the shape the database returns. */
+const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertCursor(cursor: TaskCursor): void {
+  if (!TIMESTAMP_PATTERN.test(cursor.createdAt) || !UUID_PATTERN.test(cursor.id)) {
+    throw new Error("Invalid task cursor.");
+  }
+}
+
+/** Maps a row returned with the dependency join. */
+function toTaskRow(row: Row): TaskRecord {
+  const joined = row as Row & { ai_task_dependencies?: { depends_on_task_id: string }[] };
+  return toTask(joined, (joined.ai_task_dependencies ?? []).map((d) => d.depends_on_task_id));
+}
 
 function toTask(row: Row, deps: string[]): TaskRecord {
   return {
@@ -102,21 +135,85 @@ export class SupabaseTaskStore implements TaskStore {
     return (data ?? []).map((r) => mapRun(r as Row));
   }
 
-  async listTasks(filter: { runId?: string; status?: TaskStatus } = {}): Promise<TaskRecord[]> {
-    let query = this.db.from("ai_tasks").select("*, ai_task_dependencies!task_id(depends_on_task_id)").order("created_at", { ascending: true }).limit(TASK_QUERY_LIMIT);
+  async listTasksPage(filter: { runId?: string; status?: TaskStatus; limit: number; after?: TaskCursor }): Promise<TaskPage> {
+    const limit = Math.max(1, Math.min(filter.limit, PAGE_SIZE));
+    let query = this.db.from("ai_tasks").select(TASK_SELECT).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1);
     if (filter.runId) query = query.eq("run_id", filter.runId);
     if (filter.status) query = query.eq("status", filter.status);
+    if (filter.after) {
+      assertCursor(filter.after);
+      const { createdAt, id } = filter.after;
+      query = query.or(`created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.lt.${id})`);
+    }
     const { data, error } = await query;
     if (error) fail(error);
-    return (data ?? []).map((r) => {
-      const row = r as Row & { ai_task_dependencies?: { depends_on_task_id: string }[] };
-      return toTask(row, (row.ai_task_dependencies ?? []).map((d) => d.depends_on_task_id));
-    });
+    const rows = (data ?? []) as Row[];
+    const items = rows.slice(0, limit).map(toTaskRow);
+    const last = items[items.length - 1];
+    const hasMore = rows.length > limit;
+    return { items, next: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null };
+  }
+
+  async listOpenTasks(): Promise<TaskRecord[]> {
+    const out: TaskRecord[] = [];
+    let after: TaskCursor | null = null;
+    for (;;) {
+      let query = this.db
+        .from("ai_tasks")
+        .select(TASK_SELECT)
+        .in("status", [...OPEN_TASK_STATUSES])
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(PAGE_SIZE);
+      if (after) {
+        assertCursor(after);
+        query = query.or(`created_at.gt.${after.createdAt},and(created_at.eq.${after.createdAt},id.gt.${after.id})`);
+      }
+      const { data, error } = await query;
+      if (error) fail(error);
+      const rows = (data ?? []) as Row[];
+      out.push(...rows.map(toTaskRow));
+      if (rows.length < PAGE_SIZE) return out;
+      const last = rows[rows.length - 1];
+      after = { createdAt: last.created_at as string, id: last.id as string };
+    }
+  }
+
+  async listTasksByRunIds(runIds: string[]): Promise<TaskRecord[]> {
+    const out: TaskRecord[] = [];
+    for (let i = 0; i < runIds.length; i += RUN_ID_CHUNK) {
+      const chunk = runIds.slice(i, i + RUN_ID_CHUNK);
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const { data, error } = await this.db
+          .from("ai_tasks")
+          .select(TASK_SELECT)
+          .in("run_id", chunk)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) fail(error);
+        const rows = (data ?? []) as Row[];
+        out.push(...rows.map(toTaskRow));
+        if (rows.length < PAGE_SIZE) break;
+      }
+    }
+    return out;
+  }
+
+  async getTasksByIds(ids: string[]): Promise<TaskRecord[]> {
+    const out: TaskRecord[] = [];
+    for (let i = 0; i < ids.length; i += RUN_ID_CHUNK) {
+      const { data, error } = await this.db.from("ai_tasks").select(TASK_SELECT).in("id", ids.slice(i, i + RUN_ID_CHUNK));
+      if (error) fail(error);
+      out.push(...((data ?? []) as Row[]).map(toTaskRow));
+    }
+    return out;
   }
 
   async getTask(id: string): Promise<TaskRecord | null> {
-    const tasks = await this.listTasks();
-    return tasks.find((t) => t.id === id) ?? null;
+    const { data, error } = await this.db.from("ai_tasks").select(TASK_SELECT).eq("id", id).maybeSingle();
+    if (error) fail(error);
+    return data ? toTaskRow(data as Row) : null;
   }
 
   async transitionTask(id: string, from: TaskStatus, to: TaskStatus, patch: TaskPatch = {}, now?: string): Promise<TaskRecord> {
@@ -262,11 +359,14 @@ export class SupabaseTaskStore implements TaskStore {
   }
 
   async countTasksByStatus(): Promise<Record<TaskStatus, number>> {
-    const { data, error } = await this.db.from("ai_tasks").select("status").limit(5000);
-    if (error) fail(error);
-    const counts: Record<TaskStatus, number> = { pending: 0, ready: 0, running: 0, waiting_approval: 0, succeeded: 0, failed: 0, blocked: 0, cancelled: 0 };
-    for (const row of data ?? []) counts[(row as { status: TaskStatus }).status] += 1;
-    return counts;
+    const entries = await Promise.all(
+      TASK_STATUSES.map(async (status) => {
+        const { count, error } = await this.db.from("ai_tasks").select("id", { count: "exact", head: true }).eq("status", status);
+        if (error) fail(error);
+        return [status, count ?? 0] as const;
+      }),
+    );
+    return Object.fromEntries(entries) as Record<TaskStatus, number>;
   }
 
   async actionFor(taskId: string): Promise<ActionClass | null> {

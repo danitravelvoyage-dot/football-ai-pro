@@ -80,5 +80,24 @@ export const agentInputSchema = z.object({
     .array(z.record(z.string().max(60), z.union([z.string().max(60), z.number(), z.null()])))
     .max(1000)
     .default([]),
+  /** Shared context this agent is allowed to read (see the context access rules). */
+  context: z
+    .array(z.object({ scope: z.string().max(20), key: z.string().max(80), value: z.unknown() }))
+    .max(20)
+    .default([]),
+  /** Verified, current knowledge-base facts only. Unverified or stale entries never reach an agent. */
+  knowledge: z
+    .array(
+      z.object({
+        category: z.string().max(40),
+        title: z.string().max(160),
+        body: z.string().max(1500),
+        reliability: z.string().max(40),
+        verifiedAt: z.string().nullable(),
+        officialSourceUrl: z.string().max(500).nullable(),
+      }),
+    )
+    .max(10)
+    .default([]),
 });
 export type AgentInput = z.infer<typeof agentInputSchema>;

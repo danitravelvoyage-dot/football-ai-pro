@@ -28,10 +28,31 @@ export interface TaskPatch {
   requiresApproval?: boolean;
 }
 
+/** Keyset cursor: the last row of the previous page. Newest-first pages use (createdAt, id) descending. */
+export interface TaskCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface TaskPage {
+  items: TaskRecord[];
+  next: TaskCursor | null;
+}
+
+/** Statuses that still need the scheduler's attention. Succeeded and cancelled tasks are finished. */
+export const OPEN_TASK_STATUSES: readonly TaskStatus[] = ["pending", "ready", "running", "waiting_approval", "blocked", "failed"];
+
 export interface TaskStore {
   createRun(run: NewRun, tasks: NewTask[]): Promise<{ run: WorkflowRunRecord; created: boolean }>;
   listRuns(limit: number): Promise<WorkflowRunRecord[]>;
-  listTasks(filter?: { runId?: string; status?: TaskStatus }): Promise<TaskRecord[]>;
+  /** Newest first. Pass the `next` cursor back to read the following page. Never truncates silently. */
+  listTasksPage(filter: { runId?: string; status?: TaskStatus; limit: number; after?: TaskCursor }): Promise<TaskPage>;
+  /** Every task that is not yet succeeded or cancelled, oldest first. Reads all pages; there is no row cap. */
+  listOpenTasks(): Promise<TaskRecord[]>;
+  /** Every task of the given runs, oldest first. */
+  listTasksByRunIds(runIds: string[]): Promise<TaskRecord[]>;
+  /** Looks tasks up by id, so a dependency is found wherever it sits in the queue. */
+  getTasksByIds(ids: string[]): Promise<TaskRecord[]>;
   getTask(id: string): Promise<TaskRecord | null>;
   /** Moves a task from `from` to `to`. Fails if the stored status is not `from` (optimistic concurrency). */
   transitionTask(id: string, from: TaskStatus, to: TaskStatus, patch?: TaskPatch, now?: string): Promise<TaskRecord>;
@@ -49,9 +70,17 @@ export interface TaskStore {
   saveAgentRun(run: AgentRunRecord): Promise<void>;
   listAgentRuns(limit: number): Promise<AgentRunRecord[]>;
   saveMemory(agent: AgentKey, key: string, summary: string, updatedAt: string): Promise<void>;
-  /** Used by the COO to read counts without loading personal data. */
+  /** Exact counts per status over every task. Used by the COO and the dashboard. */
   countTasksByStatus(): Promise<Record<TaskStatus, number>>;
   actionFor(taskId: string): Promise<ActionClass | null>;
+}
+
+function compareNewestFirst(a: TaskCursor, b: TaskCursor): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+}
+
+function compareOldestFirst(a: TaskCursor, b: TaskCursor): number {
+  return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 
 /** In-memory store. Same contract as the Supabase store; used by tests and local development. */
@@ -85,10 +114,31 @@ export class MemoryTaskStore implements TaskStore {
     return [...this.runs].reverse().slice(0, limit);
   }
 
-  async listTasks(filter: { runId?: string; status?: TaskStatus } = {}): Promise<TaskRecord[]> {
-    return [...this.tasks.values()].filter(
-      (t) => (!filter.runId || t.runId === filter.runId) && (!filter.status || t.status === filter.status),
-    );
+  async listTasksPage(filter: { runId?: string; status?: TaskStatus; limit: number; after?: TaskCursor }): Promise<TaskPage> {
+    const after = filter.after;
+    const matching = [...this.tasks.values()]
+      .filter((t) => (!filter.runId || t.runId === filter.runId) && (!filter.status || t.status === filter.status))
+      .filter((t) => !after || compareNewestFirst(t, after) > 0)
+      .sort(compareNewestFirst);
+    const items = matching.slice(0, filter.limit);
+    const last = items[items.length - 1];
+    const hasMore = matching.length > filter.limit;
+    return { items, next: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null };
+  }
+
+  async listOpenTasks(): Promise<TaskRecord[]> {
+    return [...this.tasks.values()]
+      .filter((t) => OPEN_TASK_STATUSES.includes(t.status))
+      .sort(compareOldestFirst);
+  }
+
+  async listTasksByRunIds(runIds: string[]): Promise<TaskRecord[]> {
+    const wanted = new Set(runIds);
+    return [...this.tasks.values()].filter((t) => wanted.has(t.runId)).sort(compareOldestFirst);
+  }
+
+  async getTasksByIds(ids: string[]): Promise<TaskRecord[]> {
+    return ids.map((id) => this.tasks.get(id)).filter((t): t is TaskRecord => t !== undefined);
   }
 
   async getTask(id: string): Promise<TaskRecord | null> {

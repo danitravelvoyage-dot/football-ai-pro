@@ -12,6 +12,10 @@ import { silentLogger } from "@/lib/ai/logging";
 import { MemoryTaskStore } from "@/lib/ai/orchestration/store";
 import { makeClock, makeHarness, makeIds, OWNER, AGENT, ScriptedProvider, agentNameIn, startInput } from "./helpers";
 import type { TaskStatus } from "@/lib/ai/types";
+import { MemoryEventStore } from "@/lib/ai/events/store";
+import { buildPlatform } from "@/lib/ai/platform";
+import { MemoryContextStore } from "@/lib/ai/context/store";
+import { MemoryKbStore } from "@/lib/ai/knowledge/store";
 
 /** Runs passes until nothing is ready to run, bounded to avoid infinite loops. */
 async function drive(orch: Orchestrator, passes = 40) {
@@ -22,7 +26,7 @@ async function drive(orch: Orchestrator, passes = 40) {
 }
 
 async function statusOf(store: MemoryTaskStore, runId: string) {
-  const tasks = await store.listTasks({ runId });
+  const tasks = await store.listTasksByRunIds([runId]);
   return Object.fromEntries(tasks.map((t) => [t.stepKey, t.status])) as Record<string, TaskStatus>;
 }
 
@@ -31,7 +35,7 @@ describe("workflow start and idempotency", () => {
     const h = makeHarness();
     const first = await h.orch.startWorkflow(startInput());
     expect(first.created).toBe(true);
-    const tasks = await h.store.listTasks({ runId: first.runId });
+    const tasks = await h.store.listTasksByRunIds([first.runId]);
     expect(tasks).toHaveLength(7);
     const approvalTask = tasks.find((t) => t.stepKey === "approval");
     expect(approvalTask?.requiresApproval).toBe(true);
@@ -44,13 +48,13 @@ describe("workflow start and idempotency", () => {
     const b = await h.orch.startWorkflow(startInput());
     expect(b.created).toBe(false);
     expect(b.runId).toBe(a.runId);
-    expect(await h.store.listTasks()).toHaveLength(7);
+    expect(await h.store.listOpenTasks()).toHaveLength(7);
   });
 
   it("rejects malformed input before anything is saved", async () => {
     const h = makeHarness();
     await expect(h.orch.startWorkflow({ ...startInput(), language: "de" as never })).rejects.toThrow();
-    expect(await h.store.listTasks()).toHaveLength(0);
+    expect(await h.store.listOpenTasks()).toHaveLength(0);
   });
 });
 
@@ -136,17 +140,17 @@ describe("failure handling", () => {
     const { runId } = await h.orch.startWorkflow(startInput({ idempotencyKey: "retry-key-0001" }));
 
     await h.orch.tick({ limit: 1 });
-    let research = (await h.store.listTasks({ runId })).find((t) => t.stepKey === "research")!;
+    let research = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "research")!;
     expect(research.status).toBe("ready");
     expect(research.lastError).toContain("HTTP 503");
 
     await h.orch.tick({ limit: 1 });
-    research = (await h.store.listTasks({ runId })).find((t) => t.stepKey === "research")!;
+    research = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "research")!;
     expect(research.status).toBe("ready");
 
     h.clock.advance(60_000);
     await h.orch.tick({ limit: 1 });
-    research = (await h.store.listTasks({ runId })).find((t) => t.stepKey === "research")!;
+    research = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "research")!;
     expect(research.status).toBe("succeeded");
   });
 
@@ -158,7 +162,7 @@ describe("failure handling", () => {
     const s = await statusOf(h.store, runId);
     expect(s.research).toBe("failed");
     expect(s.strategy).toBe("blocked");
-    const failed = (await h.store.listTasks({ runId })).find((t) => t.stepKey === "research")!;
+    const failed = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "research")!;
     expect(failed.lastError).toMatch(/not valid JSON|no JSON/);
   });
 
@@ -187,7 +191,7 @@ describe("failure handling", () => {
     await drive(h.orch);
     const s = await statusOf(h.store, runId);
     expect(s.research).toBe("failed");
-    const task = (await h.store.listTasks({ runId })).find((t) => t.stepKey === "research")!;
+    const task = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "research")!;
     expect(task.lastError).toContain("Personal data");
     expect((await h.store.listAgentRuns(50)).filter((r) => r.status === "succeeded")).toHaveLength(0);
   });
@@ -199,6 +203,10 @@ describe("state survives across sessions", () => {
     const audit = new MemoryAuditSink();
     const clock = makeClock();
     const ids = makeIds("s");
+    const platform = buildPlatform(
+      { tasks: store, events: new MemoryEventStore(), context: new MemoryContextStore(), knowledge: new MemoryKbStore(), audit },
+      { now: clock.now, newId: ids },
+    );
     const build = () => {
       const gateway = new LLMGateway({
         providers: [{ config: { id: "mock", kind: "mock", costTier: "free", enabled: true, ownerApproved: true, dailyRequestLimit: 1000 }, provider: new MockProvider() }],
@@ -214,6 +222,9 @@ describe("state survives across sessions", () => {
         now: clock.now,
         newId: ids,
         visaAllowlist: () => [],
+        events: platform.events,
+        context: platform.context,
+        knowledge: platform.knowledge,
       });
     };
     const first = build();

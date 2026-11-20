@@ -7,6 +7,11 @@ import { AGENT_REGISTRY } from "@/lib/ai/registry";
 import { DEPARTMENTS } from "@/lib/ai/departments";
 import { Panel } from "@/components/admin/AdminUI";
 import { Fact, LoadState } from "@/components/admin/command-center/Parts";
+import { DataTable } from "@/components/admin/AdminUI";
+import { Badge } from "@/components/ui";
+import { formatDateTime } from "@/lib/i18n";
+import { loadPlatform } from "@/lib/ai/command-center/platform-load";
+import { truncate } from "@/lib/ai/command-center/view";
 
 export const metadata: Metadata = { title: "Agent workforce", robots: { index: false, follow: false } };
 
@@ -20,6 +25,7 @@ export default async function AgentsPage({ params }: { params: Promise<{ locale:
   const state = await loadCommandCenter();
   if (state.status !== "ok") return <LoadState kind={state.status} dict={dict} />;
   const rollups = rollupByAgent(state.tasks);
+  const platform = await loadPlatform();
 
   return (
     <>
@@ -59,6 +65,29 @@ export default async function AgentsPage({ params }: { params: Promise<{ locale:
           </div>
         </Panel>
       ))}
+
+      <Panel title={t.agentRunsTitle}>
+        {platform.status !== "ok" ? (
+          <LoadState kind={platform.status} dict={dict} />
+        ) : platform.agentRuns.length === 0 ? (
+          <p className="text-sm text-navy-600">{t.noAgentRuns}</p>
+        ) : (
+          <DataTable head={[t.agent, t.status, t.duration, t.provider, t.when, t.error]}>
+            {platform.agentRuns.map((run) => (
+              <tr key={run.id} className="align-top hover:bg-navy-50/50">
+                <td className="px-4 py-3 font-mono text-xs text-navy-800" dir="ltr">{run.agent}</td>
+                <td className="px-4 py-3">
+                  <Badge tone={run.status === "succeeded" ? "success" : "danger"}>{run.status}</Badge>
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap font-mono text-xs" dir="ltr">{run.durationMs} ms</td>
+                <td className="px-4 py-3 font-mono text-xs text-navy-700" dir="ltr">{run.providerId ?? "—"}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(run.finishedAt, locale)}</td>
+                <td className="px-4 py-3 font-mono text-xs text-rose-800" dir="ltr">{run.error ? truncate(run.error, 160) : "—"}</td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </Panel>
     </>
   );
 }

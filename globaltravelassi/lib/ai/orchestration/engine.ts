@@ -8,7 +8,11 @@ import { getAgent } from "../registry";
 import { AgentRuntime, OutputValidationError, InputValidationError } from "../runtime";
 import { ProviderError } from "../llm/types";
 import type { Logger } from "../logging";
-import { assertValidGraph, computeReadiness, downstreamOf, type GraphNode } from "./graph";
+import { assertValidGraph, computeReadiness, type GraphNode } from "./graph";
+import { impactOfTask } from "./impact";
+import type { EventBus, PublishInput } from "../events/bus";
+import type { ContextService } from "../context/service";
+import type { KbService } from "../knowledge/service";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
 import type { AgentRunRecord, TaskRecord } from "./records";
 import type { TaskStore, NewTask } from "./store";
@@ -38,6 +42,12 @@ export interface OrchestratorDeps {
   newId: () => string;
   /** Owner-approved hosts for visa research sources. Empty by default: nothing passes until the owner sets it. */
   visaAllowlist: () => string[];
+  /** Event bus for state changes. Events are a side channel: a failed publish never changes task state. */
+  events: EventBus;
+  /** Shared context. Each agent receives only what its access rules allow. */
+  context: ContextService;
+  /** Knowledge base. Each agent receives only verified, current facts for its role. */
+  knowledge: KbService;
 }
 
 export interface TickReport {
@@ -86,6 +96,8 @@ export class Orchestrator {
         data: input.data,
         aggregates: input.aggregates,
         upstream: [],
+        context: [],
+        knowledge: [],
       };
       return {
         id: idByStep.get(s.key) as string,
@@ -130,6 +142,14 @@ export class Orchestrator {
         workflowKey: input.workflowKey,
         taskCount: tasks.length,
       });
+      await this.saveRunBrief(runId, input.brief, input.createdBy);
+      await this.publishSafely({
+        type: "workflow.started",
+        producer: "COOAgent",
+        payload: { runId: result.run.id, workflowKey: input.workflowKey, taskCount: tasks.length },
+        idempotencyKey: `workflow.started:${result.run.id}`,
+        correlationId: result.run.id,
+      });
     }
     return { runId: result.run.id, created: result.created, taskIds: tasks.map((t) => t.id) };
   }
@@ -137,13 +157,22 @@ export class Orchestrator {
   /** One scheduling pass: updates readiness, claims due tasks and runs them. Safe to call repeatedly. */
   async tick(options: { limit?: number } = {}): Promise<TickReport> {
     const report: TickReport = { claimed: 0, succeeded: 0, waitingApproval: 0, retried: 0, failed: 0 };
-    const tasks = await this.deps.store.listTasks();
+    // Every open task, with no row cap, plus the finished dependencies they wait on.
+    const open = await this.deps.store.listOpenTasks();
+    const openIds = new Set(open.map((t) => t.id));
+    const missing = [...new Set(open.flatMap((t) => t.dependsOn))].filter((id) => !openIds.has(id));
+    const finished = missing.length > 0 ? await this.deps.store.getTasksByIds(missing) : [];
+    const tasks = [...open, ...finished];
     const nodes: GraphNode[] = tasks.map((t) => ({ id: t.id, status: t.status, dependsOn: t.dependsOn }));
     const changes = computeReadiness(nodes);
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const nowIso = this.deps.now().toISOString();
 
-    for (const id of changes.toReady) await this.deps.store.transitionTask(id, "pending", "ready", {}, nowIso);
+    for (const id of changes.toReady) {
+      await this.deps.store.transitionTask(id, "pending", "ready", {}, nowIso);
+      const task = byId.get(id);
+      if (task) await this.publishSafely(readyEvent(task, `task.ready:${task.id}:${this.deps.newId()}`));
+    }
     for (const id of changes.toBlocked) {
       const from = byId.get(id)?.status as TaskStatus;
       await this.deps.store.transitionTask(id, from, "blocked", {}, nowIso);
@@ -156,6 +185,7 @@ export class Orchestrator {
       const outcome = await this.process(task);
       report[outcome] += 1;
     }
+    await this.dispatchEvents();
     return report;
   }
 
@@ -174,7 +204,12 @@ export class Orchestrator {
     const actor = `agent:${task.agent}`;
     try {
       const upstream = await this.upstreamOutputs(task);
-      const input: AgentInput = { ...task.input, upstream };
+      const context = await this.deps.context.forAgent(task.agent, task.runId);
+      const knowledge = step.deterministic
+        ? []
+        : await this.deps.knowledge.forAgent(task.agent, { country: task.input.country, language: task.input.language });
+      await this.audit(actor, "agent.inputs_loaded", "task", task.id, { context: context.length, knowledge: knowledge.length });
+      const input: AgentInput = { ...task.input, upstream, context, knowledge };
       const result = step.deterministic
         ? this.runDeterministic(step.deterministic, input)
         : await this.runAgent(task, input);
@@ -206,11 +241,25 @@ export class Orchestrator {
           requestedBy: { kind: "agent", agent: task.agent },
         });
         await this.audit(actor, "task.waiting_approval", "task", task.id, { action: step.approval.actionClass });
+        await this.publishSafely({
+          type: "task.waiting_approval",
+          producer: task.agent,
+          payload: { taskId: task.id, runId: task.runId, agent: task.agent, actionClass: step.approval.actionClass },
+          idempotencyKey: `task.waiting_approval:${task.id}`,
+          correlationId: task.runId,
+        });
         return "waitingApproval";
       }
 
       await this.deps.store.transitionTask(task.id, "running", "succeeded", { output: result.output, lastError: null }, this.deps.now().toISOString());
       await this.audit(actor, "task.succeeded", "task", task.id, { source: result.source });
+      await this.publishSafely({
+        type: "task.succeeded",
+        producer: task.agent,
+        payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey },
+        idempotencyKey: `task.succeeded:${task.id}`,
+        correlationId: task.runId,
+      });
       return "succeeded";
     } catch (error) {
       return this.handleFailure(task, error, startedAt);
@@ -298,6 +347,14 @@ export class Orchestrator {
     await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: message }, this.deps.now().toISOString());
     await this.audit(`agent:${task.agent}`, "task.failed", "task", task.id, { error: message, terminal: TERMINAL_FAILURE });
     this.deps.logger.error("task.failed", { taskId: task.id, agent: task.agent, error: message });
+    await this.publishSafely({
+      type: "task.failed",
+      producer: task.agent,
+      payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey, error: message.slice(0, 500), terminal: true },
+      // A task can fail terminally once per attempt cycle, and a retry can repeat that. Each event gets its own key.
+      idempotencyKey: `task.failed:${task.id}:${this.deps.newId()}`,
+      correlationId: task.runId,
+    });
     return "failed";
   }
 
@@ -313,6 +370,13 @@ export class Orchestrator {
     } else {
       await this.deps.store.transitionTask(task.id, "waiting_approval", "cancelled", { lastError: "Rejected by owner." }, nowIso);
     }
+    await this.publishSafely({
+      type: "approval.decided",
+      producer: "owner",
+      payload: { approvalId, taskId: task.id, decision, actionClass: approval.actionClass },
+      idempotencyKey: `approval.decided:${approvalId}`,
+      correlationId: task.runId,
+    });
     return { taskId: task.id, decision };
   }
 
@@ -324,14 +388,60 @@ export class Orchestrator {
     const nowIso = this.deps.now().toISOString();
     await this.deps.store.transitionTask(taskId, "failed", "ready", { attempts: 0, lastError: null, nextRunAt: nowIso }, nowIso);
     await this.audit(`owner:${actor.id}`, "task.retry_requested", "task", taskId, {});
+    await this.publishSafely(readyEvent({ ...task, status: "ready" }, `task.ready:${taskId}:${this.deps.newId()}`));
   }
 
-  /** Every task that depends on a failed or cancelled task is listed here, for the COO escalation. */
+  /** Every task that depends on a failed or cancelled task is listed here, for the COO escalation. Dependencies stay inside one run. */
   async impactOf(taskId: string): Promise<string[]> {
-    const tasks = await this.deps.store.listTasks();
-    const nodes: GraphNode[] = tasks.map((t) => ({ id: t.id, status: t.status, dependsOn: t.dependsOn }));
-    return downstreamOf(nodes, taskId);
+    return impactOfTask(this.deps.store, taskId);
   }
+
+  /** Keeps the run brief as workflow context, so every agent in the run reads the same brief. Never blocks the run. */
+  private async saveRunBrief(runId: string, brief: string, createdBy: string): Promise<void> {
+    if (brief.trim().length === 0) return;
+    try {
+      await this.deps.context.write({ kind: "owner", id: createdBy }, {
+        scope: "workflow",
+        scopeKey: runId,
+        contextKey: "workflow.brief",
+        value: { text: brief.slice(0, 4000) },
+        expectedVersion: 0,
+        visibility: "team",
+        reason: "Run brief",
+      });
+    } catch (error) {
+      this.deps.logger.error("context.brief_not_saved", { reason: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+
+  /** Publishes an event. A refused or failed publish is logged and never changes or blocks task state. */
+  private async publishSafely(input: PublishInput): Promise<void> {
+    try {
+      await this.deps.events.publish(input);
+    } catch (error) {
+      this.deps.logger.error("event.publish_failed", { type: input.type, reason: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+
+  private async dispatchEvents(): Promise<void> {
+    try {
+      await this.deps.events.dispatch({ limit: 100 });
+    } catch (error) {
+      this.deps.logger.error("event.dispatch_failed", { reason: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+}
+
+/** The state machine moves a task to ready once per cycle. The key is unique per event, so a retry can announce readiness again. */
+function readyEvent(task: TaskRecord, idempotencyKey: string): PublishInput {
+  return {
+    type: "task.ready",
+    producer: "COOAgent",
+    target: task.agent,
+    payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey },
+    idempotencyKey,
+    correlationId: task.runId,
+  };
 }
 
 export const KNOWN_TEMPLATES = Object.keys(WORKFLOW_TEMPLATES) as WorkflowKey[];

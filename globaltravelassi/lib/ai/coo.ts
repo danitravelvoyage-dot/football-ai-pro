@@ -47,9 +47,11 @@ export function buildExecutiveReport(input: {
   now: Date;
   tasks: TaskRecord[];
   approvals: ApprovalRecord[];
+  /** Exact counts over every task, when the caller has them. Otherwise counted from `tasks`. */
+  counts?: Record<TaskStatus, number>;
 }): ExecutiveReport {
-  const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
-  for (const t of input.tasks) counts[t.status] += 1;
+  const counts = input.counts ?? (Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>);
+  if (!input.counts) for (const t of input.tasks) counts[t.status] += 1;
 
   const failed = input.tasks
     .filter((t) => t.status === "failed")

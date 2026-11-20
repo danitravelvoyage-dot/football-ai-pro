@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CORE_MODULES,
+  deliveryTone,
+  freshnessTone,
+  safeHttpsUrl,
+  previewJson,
   classifyLoadError,
   departmentCoverage,
   groupTasksByRun,
@@ -140,7 +144,36 @@ describe("core module statement", () => {
     expect(overlap).toEqual([]);
   });
 
-  it("reports the three modules that are not built yet", () => {
-    expect([...CORE_MODULES.notBuilt].sort()).toEqual(["EVENT_BUS", "KNOWLEDGE_BASE", "SHARED_CONTEXT"]);
+  it("reports the platform modules as built, with none left unbuilt", () => {
+    expect(CORE_MODULES.built).toEqual(expect.arrayContaining(["EVENT_BUS", "SHARED_CONTEXT", "KNOWLEDGE_BASE"]));
+    expect([...CORE_MODULES.notBuilt]).toEqual([]);
+  });
+});
+
+describe("platform view helpers", () => {
+  it("delivery and freshness tones are distinct for each state", () => {
+    expect(deliveryTone("delivered")).toBe("success");
+    expect(deliveryTone("pending")).toBe("warning");
+    expect(deliveryTone("dead")).toBe("danger");
+    expect(freshnessTone("current")).toBe("success");
+    expect(freshnessTone("stale")).toBe("warning");
+    expect(freshnessTone("excluded")).toBe("danger");
+    expect(freshnessTone("not_verified")).toBe("neutral");
+  });
+
+  it("only https addresses become links; everything else is withheld", () => {
+    expect(safeHttpsUrl("https://www.example-gov.dz/visas")).toBe("https://www.example-gov.dz/visas");
+    expect(safeHttpsUrl("http://example.gov/visas")).toBeNull();
+    expect(safeHttpsUrl("javascript:alert(1)")).toBeNull();
+    expect(safeHttpsUrl("not a url")).toBeNull();
+    expect(safeHttpsUrl(null)).toBeNull();
+  });
+
+  it("value previews are bounded and survive values that cannot be serialized", () => {
+    const big = { text: "x".repeat(1000) };
+    expect(previewJson(big, 100).length).toBeLessThanOrEqual(100);
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(previewJson(cyclic, 100)).toBe("[unreadable]");
   });
 });
