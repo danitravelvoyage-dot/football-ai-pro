@@ -7,6 +7,7 @@ import type { Locale } from "@/lib/i18n/config";
 export function AdminNav({ locale, dict, current }: { locale: Locale; dict: Dict; current: string }) {
   const items = [
     { key: "overview", href: `/${locale}/admin`, label: dict.admin.overview },
+    { key: "command-center", href: `/${locale}/admin/command-center`, label: dict.commandCenter.title },
     { key: "customers", href: `/${locale}/admin/customers`, label: dict.admin.customers },
     { key: "applications", href: `/${locale}/admin/applications`, label: dict.admin.applications },
     { key: "services", href: `/${locale}/admin/services`, label: dict.admin.services },
