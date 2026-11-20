@@ -1,4 +1,4 @@
-import { DIMENSIONS, type Dimension, type QualityConfig, type QualityIssue, type QualityStatus, type ScoringWeights } from "./types";
+import { DIMENSIONS, type Dimension, type QualityIssue, type QualityStatus, type ScoringWeights } from "./types";
 
 const PENALTY: Record<QualityIssue["severity"], number> = { info: 0, warning: 10, blocking: 40, critical: 60 };
 
