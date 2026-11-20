@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { AuditSink } from "../audit";
 import { assertNoPersonalData, PersonalDataError } from "../security/personal-data";
 import { AGENT_KEYS, type Actor, type AgentKey } from "../types";
@@ -20,6 +21,29 @@ export class ContextValidationError extends Error {
 
 const MAX_VALUE_BYTES = 16_384;
 const KEY_PATTERN = /^[a-z][a-z0-9_.]{1,79}$/;
+
+/** Every field of a context write is checked here before any rule or store is touched. */
+export const contextWriteSchema = z
+  .object({
+    scope: z.enum(CONTEXT_SCOPES),
+    scopeKey: z.string().min(1).max(120),
+    contextKey: z.string().regex(KEY_PATTERN, { message: "Context key format is invalid." }),
+    value: z.record(z.string(), z.unknown(), { invalid_type_error: "Context value must be an object." }),
+    expectedVersion: z.number().int().min(0, { message: "Expected version is invalid." }),
+    visibility: z.enum(["owner", "team"]),
+    reason: z.string().max(300, { message: "Reason is too long." }).nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.scope === "company" && v.scopeKey !== "company") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeKey"], message: "Company context uses the company scope key." });
+    }
+    if (v.scope === "agent" && !(AGENT_KEYS as readonly string[]).includes(v.scopeKey)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeKey"], message: "Agent context must name an agent." });
+    }
+    if (v.scope === "workflow" && !/^[A-Za-z0-9-]{1,120}$/.test(v.scopeKey)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeKey"], message: "Workflow context must name a run." });
+    }
+  });
 
 export interface ContextWriteInput {
   scope: ContextScope;
@@ -51,23 +75,11 @@ export class ContextService {
   }
 
   validate(input: ContextWriteInput): void {
-    if (!(CONTEXT_SCOPES as readonly string[]).includes(input.scope)) throw new ContextValidationError("Unknown context scope.");
-    if (input.scope === "company" && input.scopeKey !== "company") throw new ContextValidationError("Company context uses the company scope key.");
-    if (input.scope === "agent" && !(AGENT_KEYS as readonly string[]).includes(input.scopeKey)) {
-      throw new ContextValidationError("Agent context must name an agent.");
-    }
-    if (input.scope === "workflow" && !/^[A-Za-z0-9-]{1,120}$/.test(input.scopeKey)) {
-      throw new ContextValidationError("Workflow context must name a run.");
-    }
-    if (!KEY_PATTERN.test(input.contextKey)) throw new ContextValidationError("Context key format is invalid.");
-    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new ContextValidationError("Expected version is invalid.");
-    if (typeof input.value !== "object" || input.value === null || Array.isArray(input.value)) {
-      throw new ContextValidationError("Context value must be an object.");
-    }
+    const parsed = contextWriteSchema.safeParse(input);
+    if (!parsed.success) throw new ContextValidationError(parsed.error.issues[0]?.message ?? "Context input is invalid.");
     if (new TextEncoder().encode(JSON.stringify(input.value)).length > MAX_VALUE_BYTES) {
       throw new ContextValidationError("Context value is too large.");
     }
-    if (input.reason && input.reason.length > 300) throw new ContextValidationError("Reason is too long.");
     try {
       assertNoPersonalData(input.value);
     } catch (error) {

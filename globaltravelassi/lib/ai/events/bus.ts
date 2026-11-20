@@ -43,6 +43,25 @@ export interface ValidatedEvent {
   hopCount: number;
 }
 
+/** Producer authorization per event type. Pure. */
+export function producerRules(type: EventType, producer: string, agentInPayload: string | undefined): boolean {
+  switch (type) {
+    case "approval.decided":
+      return producer === "owner" || producer === "system";
+    case "workflow.started":
+    case "task.ready":
+      return producer === "COOAgent" || producer === "system";
+    case "task.succeeded":
+    case "task.failed":
+    case "task.waiting_approval":
+      return producer === "system" || (agentInPayload !== undefined && producer === agentInPayload);
+    case "agent.handoff":
+      return true; // checked against fromAgent below
+    default:
+      return true; // context.updated and kb.entry_changed may come from any known producer
+  }
+}
+
 /** Checks an event against the catalogue. Pure: no I/O. */
 export function validateEvent(input: PublishInput): ValidatedEvent {
   if (!isEventType(input.type)) throw new EventValidationError(`Unknown event type "${input.type}".`);
@@ -67,6 +86,11 @@ export function validateEvent(input: PublishInput): ValidatedEvent {
     if (error instanceof PersonalDataError) throw new EventValidationError("Payload contains personal data and was refused.");
     throw error;
   }
+
+  // Who may announce which fact. An agent can only report its own work, so it cannot forge the owner's decision or another agent's result.
+  const agentInPayload = (parsed.data as { agent?: string }).agent;
+  const allowed = producerRules(input.type, input.producer, agentInPayload);
+  if (!allowed) throw new EventValidationError(`"${input.producer}" may not publish "${input.type}".`);
 
   const hopCount = input.hopCount ?? 0;
   if (input.type === "agent.handoff") {
