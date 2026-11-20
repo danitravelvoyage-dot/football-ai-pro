@@ -21,6 +21,9 @@ export default async function MonitorPage({ params }: { params: Promise<{ locale
 
   const pct = (v: number | null) => (v === null ? m.unavailable : `${Math.round(v * 100)}%`);
   const num = (v: number | null, suffix = "") => (v === null ? m.unavailable : `${v}${suffix}`);
+  const sc = t.schedulerUi;
+  const schedulerText = (f: typeof state.health.scheduler) =>
+    f ? `${sc.statusLabels[f.status]} · ${f.queued} ${sc.queued} · ${f.overdue} ${sc.overdue} · ${f.deadJobs} ${sc.deadJobs}` : m.unavailable;
   const toneFor = (s: string) => (s === "working" ? "info" : s === "stalled" ? "warning" : s === "failing" ? "danger" : "neutral") as "info" | "warning" | "danger" | "neutral";
 
   return (
@@ -111,7 +114,7 @@ export default async function MonitorPage({ params }: { params: Promise<{ locale
           <Fact label={m.database} value={state.health.database.ok ? m.dbOk : m.unavailable} />
           <Fact label={m.latency} value={num(state.health.database.latencyMs, " ms")} />
           <Fact label={m.withFailures} value={`${state.health.workflows.withFailures} / ${state.health.workflows.total}`} />
-          <Fact label={m.scheduler} value={m.schedulerNotBuilt} />
+          <Fact label={m.scheduler} value={schedulerText(state.health.scheduler)} />
         </dl>
         <p className="mt-4 text-xs text-navy-500">{formatDateTime(state.generatedAt, locale)}</p>
       </Panel>
