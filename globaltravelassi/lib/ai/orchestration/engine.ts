@@ -13,6 +13,9 @@ import { impactOfTask } from "./impact";
 import type { EventBus, PublishInput } from "../events/bus";
 import type { ContextService } from "../context/service";
 import type { KbService } from "../knowledge/service";
+import type { QualityController } from "../quality/controller";
+import { claimsOf } from "../quality/extract";
+import type { Claim } from "../quality/types";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
 import type { AgentRunRecord, TaskRecord } from "./records";
 import type { TaskStore, NewTask } from "./store";
@@ -48,6 +51,8 @@ export interface OrchestratorDeps {
   context: ContextService;
   /** Knowledge base. Each agent receives only verified, current facts for its role. */
   knowledge: KbService;
+  /** Quality controller. Every model output is reviewed before it is stored or used. */
+  quality: QualityController;
 }
 
 export interface TickReport {
@@ -158,6 +163,23 @@ export class Orchestrator {
   async tick(options: { limit?: number } = {}): Promise<TickReport> {
     const report: TickReport = { claimed: 0, succeeded: 0, waitingApproval: 0, retried: 0, failed: 0 };
     await this.expireApprovals();
+    await this.applyReadiness();
+    const nowIso = this.deps.now().toISOString();
+
+    const claimed = await this.deps.store.claimReady(nowIso, options.limit ?? 5);
+    report.claimed = claimed.length;
+    for (const task of claimed) {
+      const outcome = await this.process(task);
+      report[outcome] += 1;
+    }
+    // Readiness again, so a failure or a block reaches its dependants within this same pass.
+    await this.applyReadiness();
+    await this.dispatchEvents();
+    return report;
+  }
+
+  /** Moves tasks between pending, ready and blocked from the state of their dependencies. */
+  private async applyReadiness(): Promise<void> {
     // Every open task, with no row cap, plus the finished dependencies they wait on.
     const open = await this.deps.store.listOpenTasks();
     const openIds = new Set(open.map((t) => t.id));
@@ -179,15 +201,6 @@ export class Orchestrator {
       await this.deps.store.transitionTask(id, from, "blocked", {}, nowIso);
     }
     for (const id of changes.toPending) await this.deps.store.transitionTask(id, "blocked", "pending", {}, nowIso);
-
-    const claimed = await this.deps.store.claimReady(nowIso, options.limit ?? 5);
-    report.claimed = claimed.length;
-    for (const task of claimed) {
-      const outcome = await this.process(task);
-      report[outcome] += 1;
-    }
-    await this.dispatchEvents();
-    return report;
   }
 
   private async upstreamOutputs(task: TaskRecord): Promise<unknown[]> {
@@ -214,6 +227,11 @@ export class Orchestrator {
       const result = step.deterministic
         ? this.runDeterministic(step.deterministic, input)
         : await this.runAgent(task, input);
+
+      if (!step.deterministic) {
+        const gate = await this.qualityGate(task, result.output, input);
+        if (gate !== "accept") return gate;
+      }
 
       await this.deps.store.saveArtifact({
         id: this.deps.newId(),
@@ -265,6 +283,73 @@ export class Orchestrator {
     } catch (error) {
       return this.handleFailure(task, error, startedAt);
     }
+  }
+
+  /**
+   * Runs the quality review on a model output and acts on the status:
+   * PASSED continues; NEEDS_REVISION returns the task to the queue with feedback; REJECTED fails it;
+   * REQUIRES_HUMAN_REVIEW asks the owner through the approval engine.
+   */
+  private async qualityGate(
+    task: TaskRecord,
+    output: unknown,
+    input: AgentInput,
+  ): Promise<"accept" | "retried" | "failed" | "waitingApproval"> {
+    const def = getAgent(task.agent);
+    const nowIso = this.deps.now().toISOString();
+    const previous = await this.deps.quality.history({ kind: "system" }, task.id);
+    const peers: Claim[] = (await this.deps.store.listTasksByRunIds([task.runId]))
+      .filter((t) => t.id !== task.id && t.status === "succeeded" && t.output !== null)
+      .flatMap((t) => claimsOf(t.agent, getAgent(t.agent).outputKind, t.output));
+    const review = await this.deps.quality.reviewAndRecord({
+      taskId: task.id,
+      runId: task.runId,
+      agent: task.agent,
+      outputKind: def.outputKind,
+      output,
+      schema: def.outputSchema,
+      language: input.language,
+      allowlist: this.deps.visaAllowlist(),
+      peerClaims: peers,
+      attempt: previous.length + 1,
+    });
+    const codes = [...new Set(review.issues.filter((i) => i.severity !== "info").map((i) => i.code))].join(", ") || "none";
+
+    if (review.status === "PASSED") return "accept";
+
+    if (review.status === "NEEDS_REVISION") {
+      await this.deps.store.transitionTask(task.id, "running", "ready", { lastError: `Revision requested: ${codes}`, nextRunAt: nowIso }, nowIso);
+      await this.audit(`agent:${task.agent}`, "task.revision_requested", "task", task.id, { attempt: review.attempt, codes });
+      return "retried";
+    }
+
+    if (review.status === "REJECTED") {
+      const reason = `Quality rejected the output: ${codes}`;
+      await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: reason }, nowIso);
+      await this.audit(`agent:${task.agent}`, "task.quality_rejected", "task", task.id, { attempt: review.attempt, codes });
+      await this.publishSafely({
+        type: "task.failed",
+        producer: task.agent,
+        payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey, error: reason.slice(0, 500), terminal: true },
+        idempotencyKey: `task.failed:${task.id}:${this.deps.newId()}`,
+        correlationId: task.runId,
+      });
+      return "failed";
+    }
+
+    // REQUIRES_HUMAN_REVIEW: the owner decides through the approval engine. The output is held until then.
+    await this.deps.store.transitionTask(task.id, "running", "waiting_approval", { output, requiresApproval: true }, nowIso);
+    await this.deps.approvals.request({
+      taskId: task.id,
+      artifactId: null,
+      actionClass: "propose_change",
+      riskLevel: "medium",
+      summary: `Human review needed (${codes}): ${task.title}`.slice(0, 500),
+      preview: { output, quality: { status: review.status, overall: review.overall, codes } },
+      requestedBy: { kind: "system" },
+    });
+    await this.audit(`agent:${task.agent}`, "task.waiting_approval", "task", task.id, { reason: "quality_human_review", codes });
+    return "waitingApproval";
   }
 
   private stepFor(task: TaskRecord): WorkflowStep {

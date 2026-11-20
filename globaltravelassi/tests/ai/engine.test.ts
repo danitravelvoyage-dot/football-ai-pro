@@ -16,6 +16,7 @@ import { MemoryEventStore } from "@/lib/ai/events/store";
 import { buildPlatform } from "@/lib/ai/platform";
 import { MemoryContextStore } from "@/lib/ai/context/store";
 import { MemoryKbStore } from "@/lib/ai/knowledge/store";
+import { MemoryQualityStore } from "@/lib/ai/quality/store";
 
 /** Runs passes until nothing is ready to run, bounded to avoid infinite loops. */
 async function drive(orch: Orchestrator, passes = 40) {
@@ -178,9 +179,15 @@ describe("failure handling", () => {
     const { runId } = await h.orch.startWorkflow(startInput({ idempotencyKey: "compliance-key-1" }));
     await drive(h.orch);
     const s = await statusOf(h.store, runId);
-    expect(s.compliance).toBe("failed");
+    // The quality gate catches the promise at the content step, before compliance or approval run.
+    expect(s.campaign).toBe("failed");
+    expect(s.compliance).toBe("blocked");
     expect(s.approval).toBe("blocked");
     expect(await h.store.listApprovals()).toHaveLength(0);
+    const contentTask = (await h.store.listTasksByRunIds([runId])).find((t) => t.stepKey === "campaign")!;
+    const reviews = await h.quality.history({ kind: "system" }, contentTask.id);
+    expect(reviews.at(-1)?.status).toBe("REJECTED");
+    expect(reviews.some((r) => r.issues.some((i) => i.code === "brand_violation" || i.code === "policy_guaranteed-outcome"))).toBe(true);
   });
 
   it("personal data in the brief is blocked before any model call", async () => {
@@ -204,7 +211,7 @@ describe("state survives across sessions", () => {
     const clock = makeClock();
     const ids = makeIds("s");
     const platform = buildPlatform(
-      { tasks: store, events: new MemoryEventStore(), context: new MemoryContextStore(), knowledge: new MemoryKbStore(), audit },
+      { tasks: store, events: new MemoryEventStore(), context: new MemoryContextStore(), knowledge: new MemoryKbStore(), quality: new MemoryQualityStore(), audit },
       { now: clock.now, newId: ids },
     );
     const build = () => {
@@ -225,6 +232,7 @@ describe("state survives across sessions", () => {
         events: platform.events,
         context: platform.context,
         knowledge: platform.knowledge,
+        quality: platform.quality,
       });
     };
     const first = build();
@@ -264,8 +272,20 @@ describe("other workflows", () => {
     const bad = await blocked.orch.startWorkflow(startInput({ workflowKey: "visa", idempotencyKey: "visa-key-blocked" }));
     await drive(blocked.orch);
     const sb = await statusOf(blocked.store, bad.runId);
-    expect(sb.source_validation).toBe("failed");
-    expect(sb.structured_report).toBe("blocked");
+    // An official-looking source outside the allowlist needs the owner's review before validation runs.
+    expect(sb.source_discovery).toBe("waiting_approval");
+    expect(sb.source_validation).toBe("pending");
+    // Each visa step that reports such a claim needs its own review. The owner approves each one in turn.
+    for (let i = 0; i < 5; i++) {
+      const [review] = await blocked.store.listApprovals("pending");
+      if (!review) break;
+      expect(review.actionClass).toBe("propose_change");
+      await blocked.orch.decideApproval(review.id, "approved", OWNER, null);
+      await drive(blocked.orch);
+    }
+    const after = await statusOf(blocked.store, bad.runId);
+    expect(after.source_validation).toBe("failed");
+    expect(after.structured_report).toBe("blocked");
   });
 
   it("analytics aggregates counts deterministically and reports on them", async () => {

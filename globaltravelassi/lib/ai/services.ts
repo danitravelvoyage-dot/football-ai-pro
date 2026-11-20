@@ -13,9 +13,11 @@ import { AgentRuntime } from "./runtime";
 import { SupabaseAuditSink, SupabaseTaskStore, SupabaseUsageStore } from "./store/supabase-store";
 import { SupabaseEventStore } from "./store/supabase-event-store";
 import { SupabaseContextStore, SupabaseKbStore } from "./store/supabase-platform-store";
+import { SupabaseQualityStore } from "./store/supabase-quality-store";
 import { buildPlatform } from "./platform";
 import type { ContextService } from "./context/service";
 import type { KbService } from "./knowledge/service";
+import type { QualityController } from "./quality/controller";
 import type { EventBus } from "./events/bus";
 import type { AuditSink } from "./audit";
 
@@ -44,6 +46,7 @@ export interface AiServices {
   events: EventBus;
   context: ContextService;
   knowledge: KbService;
+  quality: QualityController;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -68,7 +71,7 @@ export async function createAiServices(): Promise<AiServices> {
   const approvals = new ApprovalService({ store, audit, now, newId });
   const visaHosts = await loadVisaAllowlist(db);
   const platform = buildPlatform(
-    { tasks: store, events: new SupabaseEventStore(db), context: new SupabaseContextStore(db), knowledge: new SupabaseKbStore(db), audit },
+    { tasks: store, events: new SupabaseEventStore(db), context: new SupabaseContextStore(db), knowledge: new SupabaseKbStore(db), quality: new SupabaseQualityStore(db), audit },
     { now, newId },
   );
   const orchestrator = new Orchestrator({
@@ -83,8 +86,9 @@ export async function createAiServices(): Promise<AiServices> {
     events: platform.events,
     context: platform.context,
     knowledge: platform.knowledge,
+    quality: platform.quality,
   });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

@@ -7,6 +7,8 @@ import type { EventStore } from "./events/store";
 import { KbService } from "./knowledge/service";
 import type { KbStore } from "./knowledge/store";
 import type { TaskStore } from "./orchestration/store";
+import { QualityController } from "./quality/controller";
+import type { QualityStore } from "./quality/store";
 import type { Actor } from "./types";
 
 export interface PlatformStores {
@@ -14,6 +16,7 @@ export interface PlatformStores {
   events: EventStore;
   context: ContextStore;
   knowledge: KbStore;
+  quality: QualityStore;
   audit: AuditSink;
 }
 
@@ -26,6 +29,7 @@ export interface Platform {
   events: EventBus;
   context: ContextService;
   knowledge: KbService;
+  quality: QualityController;
 }
 
 function producerFor(actor: Actor): string {
@@ -59,5 +63,6 @@ export function buildPlatform(stores: PlatformStores, clock: PlatformClock): Pla
     },
   });
   const knowledge = new KbService({ store: stores.knowledge, audit: stores.audit, now: clock.now, newId: clock.newId });
-  return { events, context, knowledge };
+  const quality = new QualityController({ store: stores.quality, audit: stores.audit, now: clock.now, newId: clock.newId });
+  return { events, context, knowledge, quality };
 }

@@ -13,6 +13,7 @@ import { AGENT_KEYS } from "@/lib/ai/types";
 import { buildPlatform } from "@/lib/ai/platform";
 import { MemoryContextStore } from "@/lib/ai/context/store";
 import { MemoryKbStore } from "@/lib/ai/knowledge/store";
+import { MemoryQualityStore } from "@/lib/ai/quality/store";
 
 export function makeClock(startIso = "2026-11-20T09:00:00.000Z") {
   let t = new Date(startIso).getTime();
@@ -84,7 +85,7 @@ export function makeHarness(options: {
   const eventStore = new MemoryEventStore();
   seedDefaultSubscriptions(eventStore, AGENT_KEYS);
   const platform = buildPlatform(
-    { tasks: store, events: eventStore, context: new MemoryContextStore(), knowledge: new MemoryKbStore(), audit },
+    { tasks: store, events: eventStore, context: new MemoryContextStore(), knowledge: new MemoryKbStore(), quality: new MemoryQualityStore(), audit },
     { now: clock.now, newId: ids },
   );
   const orch = new Orchestrator({
@@ -99,8 +100,9 @@ export function makeHarness(options: {
     events: platform.events,
     context: platform.context,
     knowledge: platform.knowledge,
+    quality: platform.quality,
   });
-  return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge };
+  return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge, quality: platform.quality };
 }
 
 export const OWNER = { kind: "owner" as const, id: "owner-1" };

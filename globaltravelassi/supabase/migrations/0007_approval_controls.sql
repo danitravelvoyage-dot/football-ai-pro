@@ -33,10 +33,76 @@ returns int language sql immutable as $$
   end
 $$;
 
--- Fingerprint of the exact action: class, task and payload. Any change to these changes the fingerprint.
+-- Canonical JSON, the same contract as lib/ai/approvals/payload.ts. Golden vectors pin both to identical text.
+create or replace function public.ai_canonical_string(p_value text)
+returns text language plpgsql immutable as $$
+declare
+  out text := '';
+  ch text;
+  cp int;
+begin
+  for i in 1..length(p_value) loop
+    ch := substr(p_value, i, 1);
+    cp := ascii(ch);
+    if cp between 55296 and 57343 then
+      raise exception 'Lone surrogates cannot be stored' using errcode = '22P05';
+    end if;
+    if ch = '"' then out := out || '\"';
+    elsif ch = '\' then out := out || '\\';
+    elsif cp = 8 then out := out || '\b';
+    elsif cp = 9 then out := out || '\t';
+    elsif cp = 10 then out := out || '\n';
+    elsif cp = 12 then out := out || '\f';
+    elsif cp = 13 then out := out || '\r';
+    elsif cp < 32 then out := out || '\u' || lpad(to_hex(cp), 4, '0');
+    else out := out || ch;
+    end if;
+  end loop;
+  return '"' || out || '"';
+end $$;
+
+create or replace function public.ai_canonical_number(p_value numeric)
+returns text language plpgsql immutable as $$
+begin
+  if abs(p_value) >= 1e21 or (p_value <> 0 and abs(p_value) < 1e-6) then
+    raise exception 'Number is outside the range the contract covers' using errcode = '22003';
+  end if;
+  return trim_scale(p_value)::text;
+end $$;
+
+create or replace function public.ai_canonical_json(p_value jsonb)
+returns text language plpgsql immutable as $$
+declare
+  out text := '';
+  key text;
+  i int;
+begin
+  case jsonb_typeof(p_value)
+    when 'null' then return 'null';
+    when 'boolean' then return case when p_value = 'true'::jsonb then 'true' else 'false' end;
+    when 'number' then return public.ai_canonical_number((p_value #>> '{}')::numeric);
+    when 'string' then return public.ai_canonical_string(p_value #>> '{}');
+    when 'array' then
+      for i in 0..jsonb_array_length(p_value) - 1 loop
+        if i > 0 then out := out || ','; end if;
+        out := out || public.ai_canonical_json(p_value -> i);
+      end loop;
+      return '[' || out || ']';
+    when 'object' then
+      i := 0;
+      for key in select k from jsonb_object_keys(p_value) as k order by convert_to(k, 'UTF8') loop
+        if i > 0 then out := out || ','; end if;
+        out := out || public.ai_canonical_string(key) || ':' || public.ai_canonical_json(p_value -> key);
+        i := i + 1;
+      end loop;
+      return '{' || out || '}';
+  end case;
+end $$;
+
+-- Fingerprint of the exact action: class, task and canonical payload. Any change to these changes the value.
 create or replace function public.ai_approval_fingerprint(p_action text, p_task uuid, p_preview jsonb)
 returns text language sql immutable as $$
-  select encode(sha256(convert_to(p_action || '|' || p_task::text || '|' || p_preview::text, 'UTF8')), 'hex')
+  select encode(sha256(convert_to(p_action || '|' || p_task::text || '|' || public.ai_canonical_json(p_preview), 'UTF8')), 'hex')
 $$;
 
 -- Sets the expiry and the fingerprint on creation. The application cannot supply either value.
