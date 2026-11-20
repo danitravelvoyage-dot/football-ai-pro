@@ -230,7 +230,7 @@ describe("knowledge base service", () => {
   it("country and language must match exactly; 'all' entries apply to every country", async () => {
     const { service } = kbHarness();
     const base = { category: "service_catalogue" as const, language: "fr" as const, title: "Service", body: "Service à présenter avec prudence.", reliabilityStatus: "verified_internal" as const };
-    const verifiedNow = new Date().toISOString();
+    const verifiedNow = "2026-11-19T09:00:00.000Z";
     await service.save(OWNER, { ...base, slug: "dz-only", country: "dz", verifiedAt: verifiedNow });
     await service.save(OWNER, { ...base, slug: "all-countries", country: "all", verifiedAt: verifiedNow });
     await service.save(OWNER, { ...base, slug: "arabic-only", language: "ar", country: "all", title: "خدمة", body: "خدمة تعرض بعناية.", verifiedAt: verifiedNow });
@@ -243,7 +243,7 @@ describe("knowledge base service", () => {
 
   it("an agent without the knowledge-read tool gets nothing", async () => {
     const { service } = kbHarness();
-    await service.save(OWNER, { category: "customer_faq", slug: "faq-3", language: "fr", country: "all", title: "Question", body: "Réponse vérifiée en interne.", reliabilityStatus: "verified_internal", verifiedAt: new Date().toISOString() });
+    await service.save(OWNER, { category: "customer_faq", slug: "faq-3", language: "fr", country: "all", title: "Question", body: "Réponse vérifiée en interne.", reliabilityStatus: "verified_internal", verifiedAt: "2026-11-19T09:00:00.000Z" });
     expect(await service.forAgent("COOAgent", { country: "dz", language: "fr" })).toEqual([]);
   });
 

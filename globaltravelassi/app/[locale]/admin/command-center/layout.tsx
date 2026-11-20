@@ -20,6 +20,7 @@ export default async function CommandCenterLayout({ children, params }: { childr
     { href: `${base}/events`, label: t.navEvents },
     { href: `${base}/context`, label: t.navContext },
     { href: `${base}/knowledge`, label: t.navKnowledge },
+    { href: `${base}/monitor`, label: t.monitor.nav },
     { href: `${base}/audit`, label: t.navAudit },
   ];
 

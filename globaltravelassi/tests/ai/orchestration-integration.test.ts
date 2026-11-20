@@ -77,7 +77,7 @@ describe("agents receive only what their access rules allow", () => {
   it("an agent that is not granted knowledge access receives an empty knowledge list", async () => {
     const spy = recordingProvider();
     const h = makeHarness({ providers: spy.providers });
-    await h.knowledge.save(OWNER, { category: "customer_faq", slug: "faq-verified", language: "fr", country: "all", title: "Question", body: "Réponse vérifiée à relire.", reliabilityStatus: "verified_internal", verifiedAt: new Date().toISOString() });
+    await h.knowledge.save(OWNER, { category: "customer_faq", slug: "faq-verified", language: "fr", country: "all", title: "Question", body: "Réponse vérifiée à relire.", reliabilityStatus: "verified_internal", verifiedAt: "2026-11-19T09:00:00.000Z" });
     await h.orch.startWorkflow(startInput({ idempotencyKey: "integration-mkt-01" }));
     await drive(h);
     const research = spy.captured.find((c) => c.agent === "Market Research Agent");
