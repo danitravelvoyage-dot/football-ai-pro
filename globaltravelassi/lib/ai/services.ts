@@ -22,6 +22,8 @@ import type { KbService } from "./knowledge/service";
 import type { QualityController } from "./quality/controller";
 import type { EventBus } from "./events/bus";
 import type { AuditSink } from "./audit";
+import { SchedulerService, type CycleReport } from "./scheduler/service";
+import { SupabaseSchedulerStore } from "./scheduler/supabase-store";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -50,14 +52,24 @@ export interface AiServices {
   knowledge: KbService;
   quality: QualityController;
   memory: MemoryService;
+  scheduler: SchedulerService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
 }
 
+/** Name of the scheduler in the heartbeat table. One name for every run of this application. */
+export const SCHEDULER_WORKER_NAME = "scheduler";
+
+export type AiDatabase = Awaited<ReturnType<typeof createServerSupabase>>;
+
 /** Composition root: wires the engine to Supabase with the signed-in admin's session. */
 export async function createAiServices(): Promise<AiServices> {
-  const db = await createServerSupabase();
+  return buildAiServices(await createServerSupabase());
+}
+
+/** Builds every service on the given database session. The scheduler worker passes its operator session here. */
+export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const store = new SupabaseTaskStore(db);
   const audit = new SupabaseAuditSink(db);
   const usage = new SupabaseUsageStore(db);
@@ -92,7 +104,19 @@ export async function createAiServices(): Promise<AiServices> {
     quality: platform.quality,
   });
   const memory = new MemoryService({ store: new SupabaseMemoryStore(db), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, audit, usage, providers: configs };
+  const eventStore = new SupabaseEventStore(db);
+  const scheduler = new SchedulerService({
+    store: new SupabaseSchedulerStore(db),
+    // One cycle: expiry sweep, stale-task recovery, readiness, task claims and event dispatch.
+    runCycle: async (): Promise<CycleReport> => ({ ...(await orchestrator.tick({ limit: 5 })) }),
+    audit,
+    now,
+    newId,
+    logger: consoleLogger,
+    workerName: SCHEDULER_WORKER_NAME,
+    deadEventDeliveries: async () => (await eventStore.countDeliveries()).dead,
+  });
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

@@ -93,22 +93,23 @@ describe("alerts", () => {
 });
 
 describe("system health", () => {
-  it("reports the dead-letter queue, the agent error rate, and that no scheduler exists", () => {
+  it("reports the dead-letter queue, the agent error rate, and the scheduler figures as read", () => {
     const h = health({
       deliveries: { pending: 2, delivered: 10, dead: 3 },
       database: { ok: true, latencyMs: 12 },
       runs: [run({ status: "failed" }), run(), run(), run()],
       workflowsWithFailures: 1,
       workflowsTotal: 4,
+      scheduler: { status: "overdue", enabled: true, queued: 2, overdue: 1, deadJobs: 0, lastSeenAt: "2026-11-20T09:00:00.000Z" },
     });
     expect(h.deadLetterQueue).toBe(3);
     expect(h.agentErrorRate).toBe(0.25);
-    expect(h.scheduler.status).toBe("not_built");
+    expect(h.scheduler).toEqual({ status: "overdue", enabled: true, queued: 2, overdue: 1, deadJobs: 0, lastSeenAt: "2026-11-20T09:00:00.000Z" });
     expect(h.workflows).toEqual({ total: 4, withFailures: 1 });
   });
 
   it("with no runs, the error rate is unknown, not zero", () => {
-    const h = health({ deliveries: { pending: 0, delivered: 0, dead: 0 }, database: { ok: true, latencyMs: null }, runs: [], workflowsWithFailures: 0, workflowsTotal: 0 });
+    const h = health({ deliveries: { pending: 0, delivered: 0, dead: 0 }, database: { ok: true, latencyMs: null }, runs: [], workflowsWithFailures: 0, workflowsTotal: 0, scheduler: null });
     expect(h.agentErrorRate).toBeNull();
   });
 });

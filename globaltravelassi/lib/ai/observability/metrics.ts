@@ -159,12 +159,22 @@ export function alertsFor(board: AgentRow[], tasks: TaskSample[], runs: RunSampl
   return alerts;
 }
 
+/** Scheduler figures as the scheduler service reports them. Null when they could not be read. */
+export interface SchedulerFigures {
+  status: "disabled" | "no_recent_worker" | "overdue" | "healthy";
+  enabled: boolean;
+  queued: number;
+  overdue: number;
+  deadJobs: number;
+  lastSeenAt: string | null;
+}
+
 export interface Health {
   eventBus: { pending: number; delivered: number; deadLetters: number };
   deadLetterQueue: number;
   database: { ok: boolean; latencyMs: number | null };
-  /** No scheduler exists yet. The dashboard says so instead of inventing a status. */
-  scheduler: { status: "not_built" };
+  /** Null means the scheduler figures could not be read. The dashboard says so instead of inventing a value. */
+  scheduler: SchedulerFigures | null;
   workflows: { total: number; withFailures: number };
   agentErrorRate: number | null;
 }
@@ -175,13 +185,14 @@ export function health(input: {
   runs: RunSample[];
   workflowsWithFailures: number;
   workflowsTotal: number;
+  scheduler: SchedulerFigures | null;
 }): Health {
   const failed = input.runs.filter((r) => r.status === "failed").length;
   return {
     eventBus: { pending: input.deliveries.pending, delivered: input.deliveries.delivered, deadLetters: input.deliveries.dead },
     deadLetterQueue: input.deliveries.dead,
     database: input.database,
-    scheduler: { status: "not_built" },
+    scheduler: input.scheduler,
     workflows: { total: input.workflowsTotal, withFailures: input.workflowsWithFailures },
     agentErrorRate: input.runs.length > 0 ? failed / input.runs.length : null,
   };

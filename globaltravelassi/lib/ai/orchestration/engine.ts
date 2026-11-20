@@ -18,7 +18,7 @@ import { claimsOf } from "../quality/extract";
 import type { Claim } from "../quality/types";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
 import type { AgentRunRecord, TaskRecord } from "./records";
-import type { TaskStore, NewTask } from "./store";
+import { ConcurrencyError, type TaskStore, type NewTask } from "./store";
 import { COUNTRIES, LANGUAGES, type Actor, type AgentInput, type TaskStatus } from "../types";
 import { aggregateRowSchema } from "../workflows/deterministic";
 
@@ -61,7 +61,20 @@ export interface TickReport {
   waitingApproval: number;
   retried: number;
   failed: number;
+  /** Approvals whose time ran out during this pass. Their waiting tasks were cancelled. */
+  expiredApprovals: number;
+  /** Tasks left in "running" by an interrupted worker and put back in the queue (or failed at the attempt limit). */
+  recoveredTasks: number;
+  /** Open tasks whose due time has passed. Counted, not changed. */
+  overdueTasks: number;
+  /** Event deliveries handled by this pass. */
+  eventsDelivered: number;
+  eventsRetried: number;
+  eventsDead: number;
 }
+
+/** A running task with no progress for this long is treated as interrupted. Real runs take seconds. */
+export const STALE_RUNNING_MS = 15 * 60_000;
 
 const TERMINAL_FAILURE = "terminal";
 
@@ -161,8 +174,21 @@ export class Orchestrator {
 
   /** One scheduling pass: updates readiness, claims due tasks and runs them. Safe to call repeatedly. */
   async tick(options: { limit?: number } = {}): Promise<TickReport> {
-    const report: TickReport = { claimed: 0, succeeded: 0, waitingApproval: 0, retried: 0, failed: 0 };
-    await this.expireApprovals();
+    const report: TickReport = {
+      claimed: 0,
+      succeeded: 0,
+      waitingApproval: 0,
+      retried: 0,
+      failed: 0,
+      expiredApprovals: 0,
+      recoveredTasks: 0,
+      overdueTasks: 0,
+      eventsDelivered: 0,
+      eventsRetried: 0,
+      eventsDead: 0,
+    };
+    report.expiredApprovals = await this.expireApprovals();
+    report.recoveredTasks = await this.recoverStaleTasks();
     await this.applyReadiness();
     const nowIso = this.deps.now().toISOString();
 
@@ -174,8 +200,58 @@ export class Orchestrator {
     }
     // Readiness again, so a failure or a block reaches its dependants within this same pass.
     await this.applyReadiness();
-    await this.dispatchEvents();
+    report.overdueTasks = await this.countOverdue();
+    const dispatched = await this.dispatchEvents();
+    report.eventsDelivered = dispatched.delivered;
+    report.eventsRetried = dispatched.retried;
+    report.eventsDead = dispatched.dead;
     return report;
+  }
+
+  /** Open tasks whose due time has passed. Read-only. */
+  private async countOverdue(): Promise<number> {
+    const nowMs = this.deps.now().getTime();
+    const open = await this.deps.store.listOpenTasks();
+    return open.filter((t) => t.dueAt !== null && Date.parse(t.dueAt) < nowMs).length;
+  }
+
+  /**
+   * Crash recovery. A task stays "running" only while a worker is processing it. If the worker stopped
+   * (process killed, host restarted), no one moves it on. Here a task that has been running longer than
+   * STALE_RUNNING_MS is returned to the queue, or failed once it has used its attempts. Each change is a
+   * compare-and-set on the status, so a task that another pass already moved is left alone.
+   */
+  async recoverStaleTasks(staleAfterMs: number = STALE_RUNNING_MS): Promise<number> {
+    const nowMs = this.deps.now().getTime();
+    const nowIso = this.deps.now().toISOString();
+    const open = await this.deps.store.listOpenTasks();
+    let recovered = 0;
+    for (const task of open) {
+      if (task.status !== "running" || Date.parse(task.updatedAt) + staleAfterMs > nowMs) continue;
+      const exhausted = task.attempts >= task.maxAttempts;
+      try {
+        if (exhausted) {
+          const reason = "Interrupted before completion, and the attempt limit was reached.";
+          await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: reason }, nowIso);
+          await this.publishSafely({
+            type: "task.failed",
+            producer: "system",
+            payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey, error: reason, terminal: true },
+            idempotencyKey: `task.failed:${task.id}:recovered:${task.attempts}`,
+            correlationId: task.runId,
+          });
+        } else {
+          await this.deps.store.transitionTask(task.id, "running", "ready", { lastError: "Recovered after an interrupted run.", nextRunAt: nowIso }, nowIso);
+        }
+        await this.audit("system", exhausted ? "task.recovery_failed" : "task.recovered", "task", task.id, { attempts: task.attempts, maxAttempts: task.maxAttempts });
+        recovered += 1;
+      } catch (error) {
+        // Another pass moved this task first. That is the expected outcome of the compare-and-set, not an error.
+        if (error instanceof ConcurrencyError) continue;
+        throw error;
+      }
+    }
+    return recovered;
   }
 
   /** Moves tasks between pending, ready and blocked from the state of their dependencies. */
@@ -534,11 +610,13 @@ export class Orchestrator {
     }
   }
 
-  private async dispatchEvents(): Promise<void> {
+  private async dispatchEvents(): Promise<{ delivered: number; retried: number; dead: number }> {
     try {
-      await this.deps.events.dispatch({ limit: 100 });
+      const r = await this.deps.events.dispatch({ limit: 100 });
+      return { delivered: r.delivered, retried: r.retried, dead: r.dead };
     } catch (error) {
       this.deps.logger.error("event.dispatch_failed", { reason: error instanceof Error ? error.name : "unknown" });
+      return { delivered: 0, retried: 0, dead: 0 };
     }
   }
 }

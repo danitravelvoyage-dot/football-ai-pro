@@ -2,6 +2,10 @@ import "server-only";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { SupabaseTaskStore } from "../store/supabase-store";
 import { SupabaseEventStore } from "../store/supabase-event-store";
+import { SupabaseSchedulerStore } from "../scheduler/supabase-store";
+import { readOnlyScheduler } from "../scheduler/service";
+import type { SchedulerFigures } from "./metrics";
+import type { AiDatabase } from "../services";
 import { consoleLogger } from "../logging";
 import { classifyLoadError, type LoadErrorKind } from "../command-center/view";
 import { agentBoard, alertsFor, health, performance, usageSummary, type ReviewSample, type RunSample, type TaskSample, type UsageSample } from "./metrics";
@@ -67,12 +71,14 @@ export async function loadMonitor(now: Date = new Date()): Promise<MonitorState>
 
     const workflowsWithFailures = new Set(allTasks.filter((t) => t.status === "failed").map((t) => t.runId)).size;
     const board = agentBoard(taskSamples, runSamples, now);
+    const scheduler = await readSchedulerFigures(db, events, now);
     const healthData = health({
       deliveries,
       database: { ok: true, latencyMs: databaseLatency },
       runs: runSamples,
       workflowsWithFailures,
       workflowsTotal: runList.length,
+      scheduler,
     });
     return {
       status: "ok",
@@ -89,6 +95,25 @@ export async function loadMonitor(now: Date = new Date()): Promise<MonitorState>
     const kind = classifyLoadError(message);
     consoleLogger.error("command_center.monitor_load_failed", { kind });
     return { status: kind };
+  }
+}
+
+/**
+ * Reads the scheduler's figures without running anything. A failed read becomes null, shown as unavailable.
+ */
+async function readSchedulerFigures(db: AiDatabase, events: SupabaseEventStore, now: Date): Promise<SchedulerFigures | null> {
+  try {
+    const h = await readOnlyScheduler(new SupabaseSchedulerStore(db), now, consoleLogger, async () => (await events.countDeliveries()).dead).health();
+    return {
+      status: h.status,
+      enabled: h.enabled,
+      queued: h.queued,
+      overdue: h.overdue,
+      deadJobs: h.counts.dead,
+      lastSeenAt: h.lastSeenAt,
+    };
+  } catch {
+    return null;
   }
 }
 
