@@ -54,10 +54,16 @@ export interface ApprovalRecord {
   riskLevel: "low" | "medium" | "high";
   summary: string;
   preview: unknown;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "expired";
   decidedBy: string | null;
   decidedAt: string | null;
   decisionNote: string | null;
+  /** When a pending approval stops being valid. Null only for actions that need no approval. */
+  expiresAt: string | null;
+  /** Fingerprint of the exact action. Changing the payload changes it, which invalidates the approval. */
+  payloadHash: string;
+  /** Set once, when an approved action has produced its owner card. Prevents a second card. */
+  executedAt: string | null;
   createdAt: string;
 }
 

@@ -9,6 +9,8 @@ import { classifyLoadError, type LoadErrorKind } from "./view";
 
 /** Workflow runs shown in detail. Totals in `counts` always cover every task, whatever this limit. */
 export const RUN_LIMIT = 200;
+/** Decided approvals shown in the dashboard history. Older decisions stay in the audit log. */
+const HISTORY_LIMIT = 50;
 /** Failed tasks listed by name. The exact number of failed tasks is in `counts`. */
 const FAILED_LIMIT = 50;
 
@@ -39,7 +41,7 @@ export async function loadCommandCenter(now: Date = new Date()): Promise<Command
     const store = new SupabaseTaskStore(db);
     const [counts, approvals, runs, failed] = await Promise.all([
       store.countTasksByStatus(),
-      store.listApprovals(),
+      loadApprovals(store),
       store.listRuns(RUN_LIMIT),
       store.listTasksPage({ status: "failed", limit: FAILED_LIMIT }),
     ]);
@@ -62,6 +64,15 @@ export async function loadCommandCenter(now: Date = new Date()): Promise<Command
     consoleLogger.error("command_center.load_failed", { kind });
     return { status: kind };
   }
+}
+
+/** Every pending approval, plus a bounded page of decided history. Pending items are never cut off. */
+async function loadApprovals(store: SupabaseTaskStore): Promise<ApprovalRecord[]> {
+  const [pending, history] = await Promise.all([
+    store.listApprovals("pending"),
+    store.listApprovalsPage({ limit: HISTORY_LIMIT }),
+  ]);
+  return [...pending, ...history.items.filter((a) => a.status !== "pending")];
 }
 
 /** Union by id, keeping the first occurrence. Both inputs are already exact for their scope. */

@@ -279,7 +279,7 @@ export const ar: Dict = {
     modulesTitle: "الوحدات الأساسية",
     modulesBuilt: "مبنية",
     modulesNotBuilt: "غير مبنية بعد",
-    extStatus: { awaiting_owner_approval: "في انتظار موافقتك", awaiting_owner_execution: "تمت الموافقة. في انتظار تنفيذك له.", rejected: "مرفوض" },
+    extStatus: { awaiting_owner_approval: "في انتظار موافقتك", awaiting_owner_execution: "تمت الموافقة. في انتظار تنفيذك له.", rejected: "مرفوض", expired: "منتهي الصلاحية" },
     recentRuns: "أحدث سير العمل",
     noRuns: "لا يوجد سير عمل بعد.",
     stepsDone: "خطوات مكتملة",

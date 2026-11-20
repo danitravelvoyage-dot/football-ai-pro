@@ -107,7 +107,9 @@ export default async function ApprovalsPage({ params }: { params: Promise<{ loca
             {history.map((a) => (
               <tr key={a.id} className="align-top hover:bg-navy-50/50">
                 <td className="px-4 py-3 font-mono text-xs text-navy-800" dir="ltr">{a.actionClass}</td>
-                <td className="px-4 py-3 font-semibold text-navy-900">{a.status === "approved" ? t.approve : t.reject}</td>
+                <td className="px-4 py-3 font-semibold text-navy-900">
+                  {a.status === "approved" ? t.approve : a.status === "expired" ? t.extStatus.expired : t.reject}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(a.decidedAt, locale)}</td>
                 <td className="px-4 py-3 text-xs text-navy-600">{a.decisionNote ?? "—"}</td>
               </tr>

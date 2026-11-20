@@ -277,7 +277,7 @@ export const en = {
     modulesTitle: "Core modules",
     modulesBuilt: "Built",
     modulesNotBuilt: "Not built yet",
-    extStatus: { awaiting_owner_approval: "Waiting for your approval", awaiting_owner_execution: "Approved. Waiting for you to carry it out.", rejected: "Rejected" },
+    extStatus: { awaiting_owner_approval: "Waiting for your approval", awaiting_owner_execution: "Approved. Waiting for you to carry it out.", rejected: "Rejected", expired: "Expired" },
     recentRuns: "Recent workflow runs",
     noRuns: "No workflow runs yet.",
     stepsDone: "steps done",

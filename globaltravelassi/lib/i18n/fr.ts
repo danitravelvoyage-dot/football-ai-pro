@@ -279,7 +279,7 @@ export const fr: Dict = {
     modulesTitle: "Modules principaux",
     modulesBuilt: "Construit",
     modulesNotBuilt: "Pas encore construit",
-    extStatus: { awaiting_owner_approval: "En attente de votre approbation", awaiting_owner_execution: "Approuvée. En attente de votre exécution.", rejected: "Refusée" },
+    extStatus: { awaiting_owner_approval: "En attente de votre approbation", awaiting_owner_execution: "Approuvée. En attente de votre exécution.", rejected: "Refusée", expired: "Expirée" },
     recentRuns: "Derniers workflows",
     noRuns: "Aucun workflow pour le moment.",
     stepsDone: "étapes terminées",

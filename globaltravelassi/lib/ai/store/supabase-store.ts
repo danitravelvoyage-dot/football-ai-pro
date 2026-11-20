@@ -6,6 +6,9 @@ import type { AgentRunRecord, ApprovalRecord, ArtifactRecord, TaskRecord, Workfl
 import {
   ConcurrencyError,
   OPEN_TASK_STATUSES,
+  type ApprovalCursor,
+  type ApprovalPage,
+  type NewApproval,
   type NewRun,
   type NewTask,
   type TaskCursor,
@@ -265,7 +268,8 @@ export class SupabaseTaskStore implements TaskStore {
     return (data ?? []).map((r) => mapArtifact(r as Row));
   }
 
-  async createApproval(a: Omit<ApprovalRecord, "createdAt" | "status" | "decidedBy" | "decidedAt" | "decisionNote">): Promise<ApprovalRecord> {
+  /** The database sets the expiry and the fingerprint on insert (migration 0007). */
+  async createApproval(a: NewApproval): Promise<ApprovalRecord> {
     const { data, error } = await this.db
       .from("ai_approvals")
       .insert({
@@ -303,12 +307,71 @@ export class SupabaseTaskStore implements TaskStore {
     return data ? mapApproval(data as Row) : null;
   }
 
-  async listApprovals(status?: ApprovalRecord["status"]): Promise<ApprovalRecord[]> {
-    let query = this.db.from("ai_approvals").select("*").order("created_at", { ascending: false }).limit(200);
-    if (status) query = query.eq("status", status);
+  async listApprovalsPage(filter: { status?: ApprovalRecord["status"]; limit: number; after?: ApprovalCursor }): Promise<ApprovalPage> {
+    const limit = Math.max(1, Math.min(filter.limit, PAGE_SIZE));
+    let query = this.db.from("ai_approvals").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1);
+    if (filter.status) query = query.eq("status", filter.status);
+    if (filter.after) {
+      assertCursor(filter.after);
+      const { createdAt, id } = filter.after;
+      query = query.or(`created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.lt.${id})`);
+    }
     const { data, error } = await query;
     if (error) fail(error);
-    return (data ?? []).map((r) => mapApproval(r as Row));
+    const rows = (data ?? []) as Row[];
+    const items = rows.slice(0, limit).map(mapApproval);
+    const last = items[items.length - 1];
+    return { items, next: rows.length > limit && last ? { createdAt: last.createdAt, id: last.id } : null };
+  }
+
+  /** Reads every page. There is no fixed row limit: a long history is read in full, page by page. */
+  async listApprovals(status?: ApprovalRecord["status"]): Promise<ApprovalRecord[]> {
+    const out: ApprovalRecord[] = [];
+    let after: ApprovalCursor | undefined;
+    for (;;) {
+      const page: ApprovalPage = await this.listApprovalsPage({ status, limit: PAGE_SIZE, after });
+      out.push(...page.items);
+      if (!page.next) return out;
+      after = page.next;
+    }
+  }
+
+  async listExpiredPending(nowIso: string): Promise<ApprovalRecord[]> {
+    const { data, error } = await this.db
+      .from("ai_approvals")
+      .select("*")
+      .eq("status", "pending")
+      .lte("expires_at", nowIso)
+      .order("expires_at", { ascending: true })
+      .limit(PAGE_SIZE);
+    if (error) fail(error);
+    return ((data ?? []) as Row[]).map(mapApproval);
+  }
+
+  async expireApproval(id: string, nowIso: string): Promise<ApprovalRecord> {
+    const { data, error } = await this.db
+      .from("ai_approvals")
+      .update({ status: "expired", decided_at: nowIso })
+      .eq("id", id)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
+    if (error) fail(error);
+    if (!data) throw new ConcurrencyError(`Approval ${id} is not pending.`);
+    return mapApproval(data as Row);
+  }
+
+  async markExecuted(id: string, nowIso: string): Promise<boolean> {
+    const { data, error } = await this.db
+      .from("ai_approvals")
+      .update({ executed_at: nowIso })
+      .eq("id", id)
+      .eq("status", "approved")
+      .is("executed_at", null)
+      .select("id")
+      .maybeSingle();
+    if (error) fail(error);
+    return data !== null;
   }
 
   async saveAgentRun(run: AgentRunRecord): Promise<void> {
@@ -416,6 +479,9 @@ function mapApproval(row: Row): ApprovalRecord {
     decidedBy: (row.decided_by as string | null) ?? null,
     decidedAt: (row.decided_at as string | null) ?? null,
     decisionNote: (row.decision_note as string | null) ?? null,
+    expiresAt: (row.expires_at as string | null) ?? null,
+    payloadHash: row.payload_hash as string,
+    executedAt: (row.executed_at as string | null) ?? null,
     createdAt: row.created_at as string,
   };
 }

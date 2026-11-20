@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApprovalService, ForbiddenActorError } from "../approvals";
+import { ApprovalExpiredError, ApprovalService, ForbiddenActorError } from "../approvals";
 import type { AuditSink } from "../audit";
 import { checkCompliance } from "../workflows/compliance-rules";
 import { summarizeAggregates, validateVisaRequirements, type VisaRequirementInput } from "../workflows/deterministic";
@@ -157,6 +157,7 @@ export class Orchestrator {
   /** One scheduling pass: updates readiness, claims due tasks and runs them. Safe to call repeatedly. */
   async tick(options: { limit?: number } = {}): Promise<TickReport> {
     const report: TickReport = { claimed: 0, succeeded: 0, waitingApproval: 0, retried: 0, failed: 0 };
+    await this.expireApprovals();
     // Every open task, with no row cap, plus the finished dependencies they wait on.
     const open = await this.deps.store.listOpenTasks();
     const openIds = new Set(open.map((t) => t.id));
@@ -358,10 +359,35 @@ export class Orchestrator {
     return "failed";
   }
 
+  /** Expires due approvals and cancels the tasks that were waiting for them. Runs at the start of every pass. */
+  async expireApprovals(): Promise<number> {
+    const expired = await this.deps.approvals.expireDue();
+    for (const approval of expired) {
+      await this.cancelWaitingTask(approval.taskId, "Approval expired before the owner decided.");
+    }
+    return expired.length;
+  }
+
+  private async cancelWaitingTask(taskId: string, reason: string): Promise<void> {
+    const task = await this.deps.store.getTask(taskId);
+    if (!task || task.status !== "waiting_approval") return;
+    await this.deps.store.transitionTask(taskId, "waiting_approval", "cancelled", { lastError: reason }, this.deps.now().toISOString());
+    await this.audit("system", "task.cancelled", "task", taskId, { reason });
+  }
+
   /** Owner-only. Approving an external action creates an owner action card; nothing is executed. */
   async decideApproval(approvalId: string, decision: "approved" | "rejected", actor: Actor, note: string | null) {
     if (actor.kind !== "owner") throw new ForbiddenActorError("Only the owner can decide an approval.");
-    const { approval } = await this.deps.approvals.decide(approvalId, decision, actor, note);
+    let decided: Awaited<ReturnType<ApprovalService["decide"]>>;
+    try {
+      decided = await this.deps.approvals.decide(approvalId, decision, actor, note);
+    } catch (error) {
+      if (error instanceof ApprovalExpiredError) {
+        await this.cancelWaitingTask(error.taskId, "Approval expired before the owner decided.");
+      }
+      throw error;
+    }
+    const { approval } = decided;
     const task = await this.deps.store.getTask(approval.taskId);
     if (!task) throw new Error(`Task ${approval.taskId} not found.`);
     const nowIso = this.deps.now().toISOString();

@@ -42,6 +42,18 @@ export interface TaskPage {
 /** Statuses that still need the scheduler's attention. Succeeded and cancelled tasks are finished. */
 export const OPEN_TASK_STATUSES: readonly TaskStatus[] = ["pending", "ready", "running", "waiting_approval", "blocked", "failed"];
 
+export type NewApproval = Omit<ApprovalRecord, "createdAt" | "status" | "decidedBy" | "decidedAt" | "decisionNote" | "executedAt">;
+
+export interface ApprovalCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface ApprovalPage {
+  items: ApprovalRecord[];
+  next: ApprovalCursor | null;
+}
+
 export interface TaskStore {
   createRun(run: NewRun, tasks: NewTask[]): Promise<{ run: WorkflowRunRecord; created: boolean }>;
   listRuns(limit: number): Promise<WorkflowRunRecord[]>;
@@ -62,10 +74,19 @@ export interface TaskStore {
   saveArtifact(artifact: Omit<ArtifactRecord, "createdAt">): Promise<ArtifactRecord>;
   listArtifacts(limit: number): Promise<ArtifactRecord[]>;
 
-  createApproval(approval: Omit<ApprovalRecord, "createdAt" | "status" | "decidedBy" | "decidedAt" | "decisionNote">): Promise<ApprovalRecord>;
+  createApproval(approval: NewApproval): Promise<ApprovalRecord>;
   decideApproval(id: string, decision: "approved" | "rejected", decidedBy: string, note: string | null, decidedAt: string): Promise<ApprovalRecord>;
   getApproval(id: string): Promise<ApprovalRecord | null>;
+  /** Every approval with the given status (all pages are read; there is no row cap). Newest first. */
   listApprovals(status?: ApprovalRecord["status"]): Promise<ApprovalRecord[]>;
+  /** One page, newest first. Pass `next` back to read the following page. */
+  listApprovalsPage(filter: { status?: ApprovalRecord["status"]; limit: number; after?: ApprovalCursor }): Promise<ApprovalPage>;
+  /** Pending approvals whose expiry time has passed. */
+  listExpiredPending(nowIso: string): Promise<ApprovalRecord[]>;
+  /** Moves a pending approval to expired. Fails if it is no longer pending. */
+  expireApproval(id: string, nowIso: string): Promise<ApprovalRecord>;
+  /** Claims the one-time execution of an approved item. Returns false if it was already claimed. */
+  markExecuted(id: string, nowIso: string): Promise<boolean>;
 
   saveAgentRun(run: AgentRunRecord): Promise<void>;
   listAgentRuns(limit: number): Promise<AgentRunRecord[]>;
@@ -73,6 +94,10 @@ export interface TaskStore {
   /** Exact counts per status over every task. Used by the COO and the dashboard. */
   countTasksByStatus(): Promise<Record<TaskStatus, number>>;
   actionFor(taskId: string): Promise<ActionClass | null>;
+}
+
+function compareApprovalsNewest(a: ApprovalCursor, b: ApprovalCursor): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 }
 
 function compareNewestFirst(a: TaskCursor, b: TaskCursor): number {
@@ -188,13 +213,14 @@ export class MemoryTaskStore implements TaskStore {
     return [...this.artifacts].reverse().slice(0, limit);
   }
 
-  async createApproval(input: Omit<ApprovalRecord, "createdAt" | "status" | "decidedBy" | "decidedAt" | "decisionNote">): Promise<ApprovalRecord> {
+  async createApproval(input: NewApproval): Promise<ApprovalRecord> {
     const record: ApprovalRecord = {
       ...input,
       status: "pending",
       decidedBy: null,
       decidedAt: null,
       decisionNote: null,
+      executedAt: null,
       createdAt: new Date().toISOString(),
     };
     this.approvals.set(record.id, record);
@@ -215,7 +241,33 @@ export class MemoryTaskStore implements TaskStore {
   }
 
   async listApprovals(status?: ApprovalRecord["status"]): Promise<ApprovalRecord[]> {
-    return [...this.approvals.values()].filter((a) => !status || a.status === status);
+    return [...this.approvals.values()].filter((a) => !status || a.status === status).sort(compareApprovalsNewest);
+  }
+
+  async listApprovalsPage(filter: { status?: ApprovalRecord["status"]; limit: number; after?: ApprovalCursor }): Promise<ApprovalPage> {
+    const matching = (await this.listApprovals(filter.status)).filter((a) => !filter.after || compareApprovalsNewest(a, filter.after) > 0);
+    const items = matching.slice(0, filter.limit);
+    const last = items[items.length - 1];
+    return { items, next: matching.length > filter.limit && last ? { createdAt: last.createdAt, id: last.id } : null };
+  }
+
+  async listExpiredPending(nowIso: string): Promise<ApprovalRecord[]> {
+    return [...this.approvals.values()].filter((a) => a.status === "pending" && a.expiresAt !== null && a.expiresAt <= nowIso);
+  }
+
+  async expireApproval(id: string, nowIso: string): Promise<ApprovalRecord> {
+    const approval = this.approvals.get(id);
+    if (!approval || approval.status !== "pending") throw new ConcurrencyError(`Approval ${id} is not pending.`);
+    const updated: ApprovalRecord = { ...approval, status: "expired", decidedBy: null, decidedAt: nowIso };
+    this.approvals.set(id, updated);
+    return updated;
+  }
+
+  async markExecuted(id: string, nowIso: string): Promise<boolean> {
+    const approval = this.approvals.get(id);
+    if (!approval || approval.status !== "approved" || approval.executedAt !== null) return false;
+    this.approvals.set(id, { ...approval, executedAt: nowIso });
+    return true;
   }
 
   async saveAgentRun(run: AgentRunRecord): Promise<void> {

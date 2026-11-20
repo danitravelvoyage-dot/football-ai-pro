@@ -3,7 +3,7 @@ import type { ApprovalRecord, TaskRecord } from "./orchestration/records";
 import { getWorkflow, type WorkflowKey, type WorkflowStep } from "./workflows/templates";
 
 /** External actions never show as completed. The owner performs them, so the report only reports their state. */
-export type ExternalItemStatus = "awaiting_owner_approval" | "awaiting_owner_execution" | "rejected";
+export type ExternalItemStatus = "awaiting_owner_approval" | "awaiting_owner_execution" | "rejected" | "expired";
 
 export interface PlannedStep {
   stepKey: string;
@@ -30,6 +30,7 @@ export function externalStatusFor(approval: ApprovalRecord): ExternalItemStatus 
   if (!isExternalAction(approval.actionClass)) return null;
   if (approval.status === "pending") return "awaiting_owner_approval";
   if (approval.status === "approved") return "awaiting_owner_execution";
+  if (approval.status === "expired") return "expired";
   return "rejected";
 }
 
@@ -89,7 +90,7 @@ export function buildExecutiveReport(input: {
 /** Returns problems found in a report. An empty list means the report makes no unsupported claims. */
 export function verifyReportHonesty(report: ExecutiveReport): string[] {
   const problems: string[] = [];
-  const allowed: ExternalItemStatus[] = ["awaiting_owner_approval", "awaiting_owner_execution", "rejected"];
+  const allowed: ExternalItemStatus[] = ["awaiting_owner_approval", "awaiting_owner_execution", "rejected", "expired"];
   for (const item of report.externalItems) {
     if (!allowed.includes(item.status)) problems.push(`External item ${item.approvalId} has status "${item.status}".`);
   }
