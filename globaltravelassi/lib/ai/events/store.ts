@@ -36,7 +36,8 @@ export interface EventStore {
   /** Stores an event once. A repeated idempotency key returns the stored event with created = false. */
   insertEvent(event: Omit<DomainEventRecord, "occurredAt"> & { occurredAt: string }): Promise<{ event: DomainEventRecord; created: boolean }>;
   getEvent(id: string): Promise<DomainEventRecord | null>;
-  listEvents(filter: { eventType?: string; target?: string; limit: number; after?: EventCursor }): Promise<{ items: DomainEventRecord[]; next: EventCursor | null }>;
+  /** Newest first. `correlationId` limits the result to one run or chain, so a count for one run is exact. */
+  listEvents(filter: { eventType?: string; target?: string; correlationId?: string; limit: number; after?: EventCursor }): Promise<{ items: DomainEventRecord[]; next: EventCursor | null }>;
   subscribersFor(eventType: EventType): Promise<string[]>;
   isSubscribed(subscriber: string, eventType: EventType): Promise<boolean>;
   /** Creates one delivery per (event, subscriber). Existing pairs are left unchanged. */
@@ -77,9 +78,10 @@ export class MemoryEventStore implements EventStore {
     return this.events.get(id) ?? null;
   }
 
-  async listEvents(filter: { eventType?: string; target?: string; limit: number; after?: EventCursor }) {
+  async listEvents(filter: { eventType?: string; target?: string; correlationId?: string; limit: number; after?: EventCursor }) {
     const matching = [...this.events.values()]
       .filter((e) => (!filter.eventType || e.eventType === filter.eventType) && (!filter.target || e.target === filter.target))
+      .filter((e) => !filter.correlationId || e.correlationId === filter.correlationId)
       .filter((e) => !filter.after || compareNewest(e, filter.after) > 0)
       .sort(compareNewest);
     const items = matching.slice(0, filter.limit);

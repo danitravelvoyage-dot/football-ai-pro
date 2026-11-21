@@ -208,3 +208,24 @@ describe("exchanges are visible to the owner", () => {
     expect(items[0]?.answer).toBeTruthy();
   });
 });
+
+describe("the question limit holds for an old run, however many newer events exist", () => {
+  it("counts this run's questions exactly, even after more than 500 newer question events in other runs", async () => {
+    const { comm, h } = setup();
+    for (let i = 0; i < MAX_QUESTIONS_PER_RUN; i++) await comm.ask(OWNER, q({ question: `Old run question ${i} about the file` }));
+    // Newer questions in other runs push this run's events out of a global newest-500 window.
+    for (let i = 0; i < 510; i++) {
+      await h.events.publish({
+        type: "agent.question",
+        producer: "SalesAgent",
+        target: "CRMAgent",
+        payload: { fromAgent: "SalesAgent", toAgent: "CRMAgent", questionId: `other-${i}`, runId: `other-run-${i}`, question: `Other run question ${i}` },
+        idempotencyKey: `agent.question:other-${i}`,
+        correlationId: `other-run-${i}`,
+        hopCount: 1,
+      });
+    }
+    await expect(comm.ask(OWNER, q({ question: "A sixth question for the old run" }))).rejects.toMatchObject({ code: "limit" });
+    expect(await comm.exchanges(RUN)).toHaveLength(MAX_QUESTIONS_PER_RUN);
+  });
+});

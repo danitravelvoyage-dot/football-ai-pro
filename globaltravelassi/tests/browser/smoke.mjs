@@ -6,6 +6,29 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const APP = fileURLToPath(new URL("../../app", import.meta.url));
+
+/** Every page under the admin area, found on disk, so no page is left out of the check. */
+function adminPageRoutes() {
+  const out = [];
+  const walk = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (name === "page.tsx") {
+        const rel = relative(APP, dir).split(sep).join("/");
+        // Dynamic segments get a valid placeholder id: the page itself must redirect before it reads it.
+        out.push("/" + rel.replace(/\[locale\]/g, "").replace(/\[[^\]]+\]/g, "00000000-0000-4000-8000-000000000001").replace(/^\//, ""));
+      }
+    }
+  };
+  walk(join(APP, "[locale]", "admin"));
+  return out.map((r) => (r === "" ? "/admin" : r.startsWith("/") ? r : "/" + r));
+}
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
@@ -82,11 +105,33 @@ async function main() {
         await page.close();
       }
 
-      // Private area without a session: must go to the sign-in page, not render admin content.
-      const adminPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-      await adminPage.goto(`${base}/en/admin/command-center`, { waitUntil: "domcontentloaded" });
-      check("admin area redirects to sign-in when signed out", /\/auth\/login/.test(adminPage.url()), adminPage.url());
-      await adminPage.close();
+      // Every admin page, in every locale, must send a signed-out visitor to sign-in and show no admin content.
+      const routes = adminPageRoutes();
+      let redirected = 0;
+      const leaked = [];
+      for (const route of routes) {
+        for (const locale of ["en", "fr", "ar"]) {
+          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+          await page.goto(`${base}/${locale}${route}`, { waitUntil: "domcontentloaded" });
+          if (/\/auth\/login/.test(page.url())) redirected += 1;
+          else leaked.push(`${locale}${route} -> ${page.url()}`);
+          await page.close();
+        }
+      }
+      check(`all ${routes.length} admin pages redirect to sign-in in en, fr and ar`, leaked.length === 0 && redirected === routes.length * 3, leaked.slice(0, 3).join(" | ") || `${redirected} redirects`);
+
+      // The sign-in, registration and password-reset forms render for each locale, without page errors.
+      for (const locale of ["en", "fr", "ar"]) {
+        for (const form of ["login", "register", "forgot"]) {
+          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+          const errors = [];
+          page.on("pageerror", (e) => errors.push(e.message));
+          const res = await page.goto(`${base}/${locale}/auth/${form}`, { waitUntil: "domcontentloaded" });
+          const fields = await page.locator("input[type=email], input[type=password]").count();
+          check(`auth ${form} (${locale}) renders its form`, res?.status() === 200 && fields >= 1 && errors.length === 0, `status ${res?.status()}, fields ${fields}, errors ${errors.length}`);
+          await page.close();
+        }
+      }
 
       // Phone width: no horizontal page scroll on the home page.
       const phone = await browser.newPage({ viewport: { width: 375, height: 760 }, isMobile: true });

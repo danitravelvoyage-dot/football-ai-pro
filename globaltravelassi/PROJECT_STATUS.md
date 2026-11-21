@@ -1,15 +1,16 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21 (session 9). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0017 are all unapplied). Migration 0017 was added in session 9.
+Status date: 2026-11-21 (session 10). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+No migration has been applied to any database (0002 to 0017 are all unapplied). The whole chain was applied to a disposable PGlite database in session 10, and nothing else.
 
-## Verification (session 9, multi-agent autonomy)
+## Verification (session 10, CEO readiness audit)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 62 files, 838 tests, all passing (778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 67 files, 870 tests, all passing (838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| Browser (`npm run test:browser`, Chromium, production build) | 22 of 22 checks pass: trigger refusals; public home in en, fr and ar with correct direction and no errors; all 28 admin pages redirect to sign-in in en, fr and ar (84 redirects); sign-in, register and forgot forms render in all three locales; no horizontal scroll at 375 px |
 | `npm run verify` | passes: lint, typecheck, unit and integration tests, production build (includes `/[locale]/admin/command-center/conflicts`) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
 | `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
@@ -164,6 +165,49 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 10 additions (CEO readiness audit)
+
+Scope: the eight objectives in the audit brief, run at $0. No paid API, no real model call, no real message or publication, no production migration, no deployment, no push.
+
+**Verified (with evidence).**
+- **Migration chain 0001 to 0017** applied in order on one disposable PGlite database with the seed: every expected table exists, row-level security is enabled on every AI table, the stage, conflict and append-only guards are installed, and no migration drops a table or deletes customer rows. This is PGlite with Supabase stubs, not a live Postgres.
+- **All five business workflows** run end to end through the real engine on the mock: marketing, sales (with its CRM lead step), customer support, visa, and analytics. Each completes its internal steps. Each external step (publish, customer message) stops at an owner approval, and approval only issues an owner card, marked as not executed by the platform.
+- **Approval and escalation paths**: owner approval releases the step, owner rejection blocks it, compliance outputs always wait for the owner, a blocking compliance violation is rejected, and expiry cancels the waiting task.
+- **Outbound requests** (regression guard): only three modules make network requests (the owner-configured model adapter, and the competitor reader, which uses GET only). No messaging, email or payment client is referenced, and no such package is a dependency. The guard fails the build if a new outbound call appears.
+- **Free local provider path**, end to end against a local stub server: configuration, the OpenAI-compatible adapter, the gateway and an agent run. Disabled by default. Output is returned only after it passes the agent's contract. A persistent server error fails the run with no fabricated output. A non-JSON reply is refused without retry.
+- **Browser**: all 28 admin pages, in all three locales, redirect a signed-out visitor to sign-in. The sign-in, register and forgot forms render.
+
+**Defects found and fixed.**
+1. **Question limit could be bypassed for an older run.** The count read the newest 500 question events across all runs and filtered them by run afterwards, so an old run could show zero questions. The store now filters by run, so the count is exact. A regression test fails on the old code and passes on the fix (checked).
+2. **Missing token counts were recorded as zero.** When an endpoint omits usage, spend was silently under-counted. The count is now estimated from text length, and the code says so. Prices are still never estimated.
+3. **An approved external action was stored as `executed`.** The field records that the owner card was issued, and the platform never performs the action. The store now says so in a comment. No status value or owner-visible label changed. The behaviour was already correct.
+
+**Not verified, and why.**
+- **Conflicts raised by the real engine (objective 1): not reachable.** Only the research and visa output kinds produce claims, and each has one agent. Research claims carry no comparable value. Two agents can therefore never disagree on a claim. A pinned test records this. Fixing it means giving outputs a subject and a value, which changes agent output contracts, so it is an owner design decision, not a defect fix.
+- **Admin page content and every admin control (objective 2):** not verified in a browser. The check proves access control only. Viewing and acting on pages needs a signed-in owner and a live database.
+- **Real model calls (objective 4):** not run. No model key exists, and no local model server or Ollama binary is installed here. The adapter was tested against a stub only.
+- **Live migrations and live RLS (objective 3):** not verified. PGlite does not model Supabase's auth roles exactly, so RLS checks are approximations.
+- **The CEO** is not built. `lib/ai/coo.ts` is a deterministic planner and report builder.
+
+**CEO autonomy readiness: not ready.** The reasons, in order: the CEO agent does not exist; claims cannot conflict, so the conflict layer cannot be exercised; no real model has ever answered a request; the admin screens have not been seen with data; the schema has not been run on a live database; and the scheduler has no external trigger or operator account. Owner approval is a hard gate on every compliance output and every external action, which is intended, but it means autonomy is bounded by owner throughput.
+
+**Operational blockers.**
+1. No real model: install a free local model (see next steps) or obtain a hosted free key.
+2. Owner approval to apply migrations 0002 to 0017 to a non-production Supabase project, with a rollback plan.
+3. Claim taxonomy decision (subject and value in research and visa outputs) to make conflicts reachable.
+4. External scheduler trigger, and an operator account with a password in the environment.
+5. Browser check of the admin pages with a signed-in owner on the non-production project.
+6. Open findings S1 (quota counter race), S2 (breaker state per process), S3 (operator write on campaigns, migration 0002).
+7. Single-task cancellation, stored answer reviews, and an owner screen for held answers are not built.
+8. Competitor monitoring is not scheduled, and no live site has been read.
+
+**Exact next steps.**
+1. On a development machine with no paid services: install Ollama, run `ollama pull qwen2.5:0.5b`, then set `AI_LOCAL_ENABLED=true` and `AI_LOCAL_MODEL=qwen2.5:0.5b` and run one agent. Record the real output, token counts and time. This is the first real model execution.
+2. Decide the claim taxonomy (subject and value in research and visa outputs). Then rewrite `tests/ai/conflict-reachability.test.ts` and add an end-to-end conflict test.
+3. Apply migrations 0002 to 0017 to a non-production Supabase project, after owner approval, and run `tests/db` against it.
+4. Sign in as the owner on that project and walk through each admin page and control. Record the results here.
+5. Only then design the CEO agent, with owner-set limits on what it may decide alone.
 
 ## Session 9 additions (multi-agent autonomy)
 

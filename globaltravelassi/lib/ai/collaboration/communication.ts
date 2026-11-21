@@ -181,8 +181,9 @@ export class CommunicationService {
 
   /** The questions asked in a run and the answers delivered so far. Text is included: this is the owner's view. */
   async exchanges(runId: string): Promise<ExchangeItem[]> {
-    const page = await this.deps.events.listEvents({ eventType: "agent.question", limit: 500 });
-    const answers = await this.deps.events.listEvents({ eventType: "agent.answer", limit: 500 });
+    // Filtered by the run in the store, so the list is exact for this run, however many runs exist.
+    const page = await this.deps.events.listEvents({ eventType: "agent.question", correlationId: runId, limit: 500 });
+    const answers = await this.deps.events.listEvents({ eventType: "agent.answer", correlationId: runId, limit: 500 });
     const answerByQuestion = new Map<string, string>();
     for (const e of answers.items) {
       const p = e.payload as { questionId: string; answer: string; runId: string };

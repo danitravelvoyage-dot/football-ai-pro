@@ -77,9 +77,16 @@ export class OpenAICompatibleProvider implements LLMProvider {
       text,
       providerId: this.id,
       model: this.options.model,
-      tokensIn: data.usage?.prompt_tokens ?? 0,
-      tokensOut: data.usage?.completion_tokens ?? 0,
+      // Some endpoints omit usage. A zero would silently under-count spend, so the count is estimated from length
+      // (about four characters per token) instead. Prices are never estimated: those come only from the owner's list.
+      tokensIn: data.usage?.prompt_tokens ?? estimateTokens(request.system + request.user),
+      tokensOut: data.usage?.completion_tokens ?? estimateTokens(text),
       source: "live",
     };
   }
+}
+
+/** A rough token count from text length, used only when the endpoint reports no usage. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
 }

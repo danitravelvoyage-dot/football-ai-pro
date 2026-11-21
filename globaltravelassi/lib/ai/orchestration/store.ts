@@ -263,6 +263,7 @@ export class MemoryTaskStore implements TaskStore {
     return updated;
   }
 
+  /** Records that the owner card for an approved external action was issued. The platform never performs the action itself. */
   async markExecuted(id: string, nowIso: string): Promise<boolean> {
     const approval = this.approvals.get(id);
     if (!approval || approval.status !== "approved" || approval.executedAt !== null) return false;

@@ -89,11 +89,12 @@ export class SupabaseEventStore implements EventStore {
     return data ? toEvent(data as Row) : null;
   }
 
-  async listEvents(filter: { eventType?: string; target?: string; limit: number; after?: EventCursor }) {
+  async listEvents(filter: { eventType?: string; target?: string; correlationId?: string; limit: number; after?: EventCursor }) {
     const limit = Math.max(1, Math.min(filter.limit, 500));
     let query = this.db.from("ai_domain_events").select("*").order("occurred_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1);
     if (filter.eventType) query = query.eq("event_type", filter.eventType);
     if (filter.target) query = query.eq("target", filter.target);
+    if (filter.correlationId) query = query.eq("correlation_id", filter.correlationId);
     if (filter.after) {
       if (!TIMESTAMP_PATTERN.test(filter.after.occurredAt) || !UUID_PATTERN.test(filter.after.id)) throw new Error("Invalid event cursor.");
       const { occurredAt, id } = filter.after;
