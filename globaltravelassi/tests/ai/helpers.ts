@@ -72,6 +72,7 @@ export function makeHarness(options: {
   start?: string;
   briefing?: () => Promise<{ scope: string; key: string; value: unknown }[]>;
   notify?: (notice: import("@/lib/ai/notifications/rules").Notice) => Promise<unknown>;
+  review?: { open(input: import("@/lib/ai/review/service").ReviewOpenInput): Promise<unknown> };
 } = {}) {
   const clock = makeClock(options.start);
   const store = new MemoryTaskStore();
@@ -107,6 +108,7 @@ export function makeHarness(options: {
     quality: platform.quality,
     briefing: options.briefing,
     notify: options.notify,
+    review: options.review,
     collaboration: collab,
   });
   return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, collab, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge, quality: platform.quality };

@@ -67,7 +67,7 @@ export interface ReviewServiceDeps {
    * Re-checks an approval before it is recorded. Throws when the thing it approves has changed since the item was opened,
    * so the approval is refused and not recorded as a decision.
    */
-  prechecks?: Partial<Record<ReviewKind, (item: ReviewItem) => Promise<void>>>;
+  prechecks?: Partial<Record<ReviewKind, (item: ReviewItem, decision: Decision) => Promise<void>>>;
 }
 
 const owner = (actor: Actor): string => {
@@ -140,9 +140,9 @@ export class ReviewService {
       throw new ReviewRuleError(messageFor(check.code), check.code);
     }
 
-    if (decision === "approve" && this.deps.prechecks?.[item.kind]) {
+    if (this.deps.prechecks?.[item.kind]) {
       try {
-        await this.deps.prechecks[item.kind]!(item);
+        await this.deps.prechecks[item.kind]!(item, decision);
       } catch {
         await this.audit(by, "refused", id, item, { decision, reason: "stale" });
         throw new ReviewRuleError("The item it approves has changed since it was opened. Review it again.", "stale");

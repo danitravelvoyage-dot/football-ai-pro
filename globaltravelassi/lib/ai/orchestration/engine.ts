@@ -29,6 +29,7 @@ import type { AgentRunRecord, TaskRecord } from "./records";
 import { ConcurrencyError, type TaskStore, type NewTask } from "./store";
 import { COUNTRIES, LANGUAGES, type Actor, type AgentInput, type TaskStatus } from "../types";
 import { aggregateRowSchema } from "../workflows/deterministic";
+import type { ReviewOpenInput } from "../review/service";
 
 export const startWorkflowSchema = z.object({
   workflowKey: z.enum(Object.keys(WORKFLOW_TEMPLATES) as [WorkflowKey, ...WorkflowKey[]]),
@@ -70,6 +71,8 @@ export interface OrchestratorDeps {
   notify?: (notice: Notice) => Promise<unknown>;
   /** Review panels, routing decisions and conflicts. Recorded for every decision the engine takes. */
   collaboration: CollaborationStore;
+  /** Owner approval center. A rejected output is opened there. Optional: without it, the rejection is audited only. */
+  review?: { open(input: ReviewOpenInput): Promise<unknown> };
 }
 
 interface AgentChoice {
@@ -465,6 +468,7 @@ export class Orchestrator {
       await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: reason }, nowIso);
       await this.audit(`agent:${task.agent}`, "task.quality_rejected", "task", task.id, { attempt: review.attempt, codes });
       await this.notifyFailure(task, reason);
+      await this.openRejectedProposal(task, review.attempt, codes);
       await this.publishSafely({
         type: "task.failed",
         producer: task.agent,
@@ -495,6 +499,29 @@ export class Orchestrator {
       correlationId: task.runId,
     });
     return "waitingApproval";
+  }
+
+  /**
+   * Opens a rejected output for the owner. Evidence holds the reason codes and the attempt, never the reviewed text.
+   * A failure to open the item is audited and does not change the task, which has already failed.
+   */
+  private async openRejectedProposal(task: TaskRecord, attempt: number, codes: string): Promise<void> {
+    if (!this.deps.review) return;
+    try {
+      await this.deps.review.open({
+        kind: "rejected_proposal",
+        agent: task.agent,
+        runId: task.runId,
+        taskId: task.id,
+        leadId: null,
+        subjectRef: task.id,
+        summary: `${task.agent} output for "${task.stepKey}" was rejected by quality review.`.slice(0, 500),
+        evidence: { codes, attempt },
+        payload: { taskId: task.id, runId: task.runId, agent: task.agent, stepKey: task.stepKey },
+      });
+    } catch (error) {
+      await this.audit("system", "review.open_failed", "task", task.id, { kind: "rejected_proposal", error: error instanceof Error ? error.message.slice(0, 160) : "unknown" });
+    }
   }
 
   /**

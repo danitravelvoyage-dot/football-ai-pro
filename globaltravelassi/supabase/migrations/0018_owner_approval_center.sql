@@ -43,8 +43,18 @@ begin
     raise exception 'A decided review item cannot change.' using errcode = 'check_violation';
   end if;
   if new.kind is distinct from old.kind or new.subject_ref is distinct from old.subject_ref or new.evidence is distinct from old.evidence
-     or new.payload is distinct from old.payload or new.expires_at is distinct from old.expires_at or new.created_at is distinct from old.created_at then
+     or new.payload is distinct from old.payload or new.expires_at is distinct from old.expires_at or new.created_at is distinct from old.created_at
+     or new.agent is distinct from old.agent or new.run_id is distinct from old.run_id or new.task_id is distinct from old.task_id
+     or new.lead_id is distinct from old.lead_id then
     raise exception 'Only the decision of a review item can change.' using errcode = 'check_violation';
+  end if;
+  -- An open item moves once, to a decision. A decision is never 'open' again.
+  if new.status not in ('approved', 'rejected', 'revision_requested', 'expired') then
+    raise exception 'A review item can only move to a decision.' using errcode = 'check_violation';
+  end if;
+  -- Compare-and-set in the database too: the version rises by exactly one per decision.
+  if new.version is distinct from old.version + 1 then
+    raise exception 'Review item version must rise by one.' using errcode = 'check_violation';
   end if;
   return new;
 end $$;
@@ -93,3 +103,17 @@ alter table public.ai_sources_allowlist add column if not exists status text not
 alter table public.ai_sources_allowlist add column if not exists expires_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists validated_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists updated_at timestamptz not null default now();
+alter table public.ai_sources_allowlist add column if not exists version int not null default 1 check (version >= 1);
+
+-- Every change to a registry row bumps its version; a change that names an old version matches nothing.
+create or replace function public.ai_source_version_bump()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  new.version := old.version + 1;
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists ai_sources_allowlist_version on public.ai_sources_allowlist;
+create trigger ai_sources_allowlist_version before update on public.ai_sources_allowlist
+  for each row execute function public.ai_source_version_bump();

@@ -45,7 +45,16 @@ function center() {
       return { eventId: `evt-${delivered.length}` };
     },
   };
-  const review: ReviewService = createReviewCenter({ store: reviewStore, audit, now: clock.now, newId, crm, communication: communication as never });
+  const review: ReviewService = createReviewCenter({
+    store: reviewStore,
+    audit,
+    now: clock.now,
+    newId,
+    crm,
+    communication: communication as never,
+    tasks: { getTask: async () => ({ status: "failed" }) },
+    orchestrator: { retryTask: async () => {} },
+  });
   return { review, crm, crmStore, audit, clock, delivered, reviewStore };
 }
 

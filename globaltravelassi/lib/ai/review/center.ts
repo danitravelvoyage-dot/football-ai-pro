@@ -12,6 +12,9 @@ export interface ReviewCenterDeps {
   newId: () => string;
   crm: Pick<CrmService, "checkApprovedTransition" | "applyApprovedTransition">;
   communication: Pick<CommunicationService, "deliverApproved">;
+  /** The engine's task state and owner retry. A revision request requeues the original task through `retryTask`. */
+  tasks: { getTask(id: string): Promise<{ status: string } | null> };
+  orchestrator: { retryTask(taskId: string, actor: Actor): Promise<void> };
 }
 
 /** The fields a held answer keeps in its payload. */
@@ -22,6 +25,13 @@ interface HeldAnswerPayload {
   toAgent: AgentKey;
   answer: string;
   question: string;
+}
+
+interface RejectedPayload {
+  taskId: string;
+  runId: string;
+  agent: AgentKey;
+  stepKey: string;
 }
 
 interface CrmTransitionPayload {
@@ -37,8 +47,8 @@ interface CrmTransitionPayload {
  * Builds the owner's approval center. The effect of an approval runs only after the decision is recorded. The precheck
  * of a CRM transition runs before it, so an approval for a lead that has since changed is refused and not recorded.
  *
- * Rejected proposals have no effect yet: the orchestrator has no retry entry point, so `request_revision` only records the
- * owner's request. Escalated claims and stage disagreements are recorded decisions with no automatic follow-up.
+ * A rejected proposal's `request_revision` requeues the original task through the orchestrator, and only when that task is
+ * still failed. Escalated claims and stage disagreements are recorded decisions with no automatic follow-up.
  */
 export function createReviewCenter(deps: ReviewCenterDeps): ReviewService {
   const ownerOf = (actor: string): Actor => ({ kind: "owner", id: actor });
@@ -48,9 +58,18 @@ export function createReviewCenter(deps: ReviewCenterDeps): ReviewService {
     now: deps.now,
     newId: deps.newId,
     prechecks: {
-      crm_transition: async (item) => {
+      crm_transition: async (item, decision) => {
+        if (decision !== "approve") return;
         const p = item.payload as unknown as CrmTransitionPayload;
         await deps.crm.checkApprovedTransition({ leadId: p.leadId, from: p.from, expectedVersion: p.expectedVersion });
+      },
+      // A revision is refused, and not recorded, unless its task is still failed. This stops a second request from
+      // queuing the same task twice.
+      rejected_proposal: async (item, decision) => {
+        if (decision !== "request_revision") return;
+        const p = item.payload as unknown as RejectedPayload;
+        const task = await deps.tasks.getTask(p.taskId);
+        if (!task || task.status !== "failed") throw new Error("The task is no longer failed.");
       },
     },
     effects: {
@@ -66,7 +85,12 @@ export function createReviewCenter(deps: ReviewCenterDeps): ReviewService {
         const r = await deps.communication.deliverApproved(ownerOf(actor), { runId: p.runId, questionId: p.questionId, fromAgent: p.fromAgent, toAgent: p.toAgent, answer: p.answer });
         return { delivered: true, eventId: r.eventId };
       },
-      rejected_proposal: async (_item, decision) => ({ recorded: true, revisionRequested: decision === "request_revision" }),
+      rejected_proposal: async (item, decision, actor) => {
+        if (decision !== "request_revision") return { requeued: false };
+        const p = item.payload as unknown as RejectedPayload;
+        await deps.orchestrator.retryTask(p.taskId, ownerOf(actor));
+        return { requeued: true, taskId: p.taskId };
+      },
       escalated_claim: async () => ({ recorded: true }),
       crm_stage_disagreement: async () => ({ recorded: true }),
     },

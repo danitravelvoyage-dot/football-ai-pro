@@ -46,6 +46,8 @@ import { CommunicationService } from "./collaboration/communication";
 import { ReviewService, type ReviewOpenInput } from "./review/service";
 import { SupabaseReviewStore } from "./review/supabase-store";
 import { createReviewCenter } from "./review/center";
+import { SourceService } from "./sources/service";
+import { SupabaseSourceStore } from "./sources/supabase-store";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -84,6 +86,7 @@ export interface AiServices {
   collaboration: CollaborationService;
   communication: CommunicationService;
   review: ReviewService;
+  sources: SourceService;
   stageAnswers: StageAnswerService;
   audit: AuditSink;
   usage: UsageStore;
@@ -116,7 +119,8 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const newId = () => crypto.randomUUID();
   const now = () => new Date();
   const approvals = new ApprovalService({ store, audit, now, newId });
-  const visaHosts = await loadVisaAllowlist(db);
+  const sources = new SourceService({ store: new SupabaseSourceStore(db), audit, now, newId });
+  const visaHosts = await sources.activeHosts();
   const platform = buildPlatform(
     { tasks: store, events: new SupabaseEventStore(db), context: new SupabaseContextStore(db), knowledge: new SupabaseKbStore(db), quality: new SupabaseQualityStore(db), audit },
     { now, newId },
@@ -125,6 +129,12 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const notifications = new NotificationService({ store: new SupabaseNotificationStore(db), audit, now, newId });
   const notify = (notice: Notice) => notifications.notify(notice);
   const collaborationStore = new SupabaseCollaborationStore(db);
+  // The review center is built last, but CRM and communication open items in it. They reach it through this reference.
+  let reviewCenter: ReviewService | null = null;
+  const openReview = (input: ReviewOpenInput) => {
+    if (!reviewCenter) throw new Error("The approval center is not ready.");
+    return reviewCenter.open(input);
+  };
   const orchestrator = new Orchestrator({
     store,
     runtime,
@@ -142,6 +152,8 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     briefing: () => memory.briefing({ kind: "system" }),
     notify,
     collaboration: collaborationStore,
+    // A rejected proposal waits in the approval center. The owner's revision request requeues the same task.
+    review: { open: (input) => openReview(input) },
   });
   const eventStore = new SupabaseEventStore(db);
   const scheduler = new SchedulerService({
@@ -189,12 +201,6 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
       return out;
     },
   });
-  // The review center is built last, but CRM and communication open items in it. They reach it through this reference.
-  let reviewCenter: ReviewService | null = null;
-  const openReview = (input: ReviewOpenInput) => {
-    if (!reviewCenter) throw new Error("The approval center is not ready.");
-    return reviewCenter.open(input);
-  };
   const crm = new CrmService({
     store: new SupabaseCrmStore(db),
     audit,
@@ -231,14 +237,9 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     // A held answer waits in the approval center with its evidence.
     review: { open: (input) => openReview(input) },
   });
-  const review = createReviewCenter({ store: new SupabaseReviewStore(db), audit, now, newId, crm, communication });
+  const review = createReviewCenter({ store: new SupabaseReviewStore(db), audit, now, newId, crm, communication, tasks: store, orchestrator });
   reviewCenter = review;
-  const stageAnswers = new StageAnswerService({ runtime, crm, audit, now, newId });
+  const stageAnswers = new StageAnswerService({ runtime, crm, audit, now, newId, review: { open: (input) => openReview(input) } });
   const businessReports = new BusinessReportService({ crm, campaigns, competitors, notify: (n) => notifications.notify(n), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, review, stageAnswers, audit, usage, providers: configs };
-}
-
-async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {
-  const { data } = await db.from("ai_sources_allowlist").select("host");
-  return (data ?? []).map((r) => (r as { host: string }).host);
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, review, sources, stageAnswers, audit, usage, providers: configs };
 }

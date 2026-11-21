@@ -17,6 +17,8 @@ export default async function CommandCenterLayout({ children, params }: { childr
     { href: `${base}/agents`, label: t.navAgents },
     { href: `${base}/tasks`, label: t.navTasks },
     { href: `${base}/approvals`, label: t.navApprovals },
+    { href: `${base}/review`, label: t.navReview },
+    { href: `${base}/sources`, label: t.navSources },
     { href: `${base}/events`, label: t.navEvents },
     { href: `${base}/context`, label: t.navContext },
     { href: `${base}/knowledge`, label: t.navKnowledge },

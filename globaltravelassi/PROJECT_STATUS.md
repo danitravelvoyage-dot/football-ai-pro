@@ -485,3 +485,37 @@ Status: the decision core, CRM transition control and tests are built and verifi
 
 - Approve applying migration 0018 to a staging project.
 - Confirm the remaining items (page, source registry, two hooks) before they are built.
+
+## Phase 13 continuation: approval center, source registry, missing hooks (local)
+
+Status: built and verified locally. Migration 0018 is **still NOT applied**: it waits for the owner's review. Nothing pushed, nothing deployed.
+
+### Added
+
+- **Approval center** `/command-center/review`: open items with evidence, source URLs, agent, task, lead and timestamps; decision forms limited to the kind's allowed decisions; decided history. Server action `lib/actions/review.ts`.
+- **Source registry** `/command-center/sources`: add, edit (category, jurisdiction, purpose, expiry), disable and enable, mark as checked today (revalidate), remove. Every change needs a reason, is checked against the row's version, and is audited with previous and new values. `lib/ai/sources/*`, actions `lib/actions/sources.ts`. The visa research allowlist now reads usable hosts from this registry, official sources first.
+- **Hooks**:
+  - Stage disagreements: `StageAnswerService` opens a `crm_stage_disagreement` item when the model and the record disagree. The record stays the answer.
+  - Rejected proposals: the engine opens a `rejected_proposal` item when quality review rejects an output. `request_revision` requeues the same task through `retryTask`, only if the task is still failed, so a duplicate request is refused and recorded nothing.
+- **Exactly-once**: held answers are delivered once through the event bus idempotency key, and the review decision is a compare-and-set, so two simultaneous approvals deliver one answer.
+
+### Migration 0018 changes in this round (not applied)
+
+- Review guard: a decision must move to approved, rejected, revision_requested or expired; the version must rise by exactly one; the item identity fields (agent, run, task, lead) are immutable.
+- Source registry: new `version` column and a trigger that bumps it on every change.
+- Rollback script: `docs/migrations/0018_rollback.sql`, outside the migration chain. It is tested on PGlite together with the forward migration.
+
+### Tests
+
+- `tests/ai/review-hooks.test.ts` (11): rejection path through the real engine, requeue, duplicate refusal, reject, approve refused, stage disagreement, owner-only, exactly-once under simultaneous approval.
+- `tests/ai/sources.test.ts` (24): host and metadata rules, usability, revalidation, official priority, authorization, stale writes, disable and enable, expiry, removal, audit.
+- `tests/db/owner-approval.test.ts` (11): guard, version rule, defaults, registry version trigger, rollback.
+- `npm run verify`: passes. 999 tests, lint with zero warnings, typecheck, production build.
+
+### Remaining risks
+
+- Per-item audit history is not a separate view. Decisions are audited in `ai_events` and shown on the item (status, decided by, time, reason). The full trail is on the existing audit page.
+- Effects still run after the decision is recorded. A failure after recording is not rolled back. Preconditions (CRM precheck, task-still-failed check) reduce this.
+- Server actions have no automated test in this environment; owner checks in them use the existing `ownerId()` (profile role admin, active) and the services enforce owner-only independently.
+- `escalated_claim` remains visible through the existing approvals only.
+- Registry expiry is end-of-day UTC.

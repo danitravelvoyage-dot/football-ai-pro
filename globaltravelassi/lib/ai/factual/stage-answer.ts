@@ -6,6 +6,7 @@ import { getAgent, type AgentDefinition } from "../registry";
 import { LEAD_STAGES, type LeadStage } from "../crm/rules";
 import type { CrmService } from "../crm/service";
 import { validateStage } from "./validate";
+import type { ReviewOpenInput } from "../review/service";
 
 /**
  * Answers "what stage is this lead in?" from the stored lead record, which is the source of truth.
@@ -33,6 +34,8 @@ export interface StageAnswer {
 }
 
 export interface StageAnswerDeps {
+  /** Opens a disagreement for the owner. Optional: without it, the escalation is audited only. */
+  review?: { open(input: ReviewOpenInput): Promise<unknown> };
   runtime: AgentRuntime;
   crm: CrmService;
   audit: AuditSink;
@@ -91,6 +94,20 @@ export class StageAnswerService {
     }
 
     const status: StageAnswer["status"] = modelCheck === "disagreed" ? "escalated" : "answered";
+    if (status === "escalated" && this.deps.review) {
+      // The record and the model disagree. The owner decides which is right. The question text is not stored.
+      await this.deps.review.open({
+        kind: "crm_stage_disagreement",
+        agent: "CRMAgent",
+        runId: null,
+        taskId: null,
+        leadId,
+        subjectRef: leadId,
+        summary: "The stored stage and the CRM agent's stage differ. The stored stage is shown as the answer until you decide.",
+        evidence: { recordStage: lead.stage, reasons },
+        payload: { leadId, recordStage: lead.stage },
+      });
+    }
     await this.deps.audit.write({
       id: this.deps.newId(),
       ts: this.deps.now().toISOString(),
