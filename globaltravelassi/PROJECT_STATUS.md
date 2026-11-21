@@ -1,18 +1,18 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-20. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0014 are all unapplied).
+Status date: 2026-11-21. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+No migration has been applied to any database (0002 to 0015 are all unapplied).
 
-## Verification (this change)
+## Verification (session 5, CRM and sales pipeline)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 47 files, 616 tests, all passing (580 at the previous checkpoint, 435 before the scheduler) |
-| `npm run build` | passes; `/api/ai/scheduler` and `/[locale]/admin/command-center/scheduler` compile |
+| `npm test` (vitest) | 50 files, 669 tests, all passing (616 at the session 4 checkpoint, 435 before the scheduler) |
+| `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
-| SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal |
+| SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal; 17 CRM tests covering the stage guard, database-written history, append-only records, application-link rule, one open follow-up per lead, and operator, ordinary-user and anonymous isolation |
 
 Not verified: a live database with migrations 0002 to 0011 applied; two real database connections racing for a lease; an authenticated browser run of the scheduler page; a live AI provider.
 
@@ -141,6 +141,28 @@ Findings and status:
 9. **No service-role key** appears anywhere in the repository (searched).
 10. **Form pending state** and redirect behaviour were verified in an earlier session; not re-tested here.
 
+## Session 5 additions (CRM and sales pipeline)
+
+**Built and tested (migration 0015, not applied):**
+- **Leads:** `ai_leads` with source tracking (application, manual, campaign, referral, social). An application lead must point to its application; any other lead must not. Contact details are never copied into the CRM: they stay in the application record.
+- **Pipeline:** stages new, contacted, qualified, interested, converted, lost. Allowed moves are defined once in `lib/ai/crm/rules.ts` and repeated in the database guard, so a direct client update cannot skip them. A lost lead needs a reason. A converted lead is terminal. A lost lead can be reopened to new.
+- **Stage history:** written by the database itself, in the same transaction as the stage change, so a refused move leaves no history row. The history table is append-only.
+- **Interaction history:** notes, calls, meetings, messages the owner sent outside the platform, and status updates. Append-only.
+- **Scoring:** rule-based and deterministic. Each point carries a reason code, which the page shows. Reasons cover source, known destination, travel within 90 days, stage, purchase intent, recent activity and dormancy (30 days without activity). Scores are computed on read, not stored, so they cannot go stale.
+- **Purchase intent:** keyword rules in English, French and Arabic applied to the owner's own notes. The result is a level only (high, medium, none). The matched text is never returned. It is a heuristic, not a model judgement.
+- **Follow-ups:** the rules suggest one follow-up per quiet lead, with a priority. A suggestion waits for the owner: approve schedules it, dismiss closes it, complete records it. Nothing is sent to a customer. The database allows one open follow-up per lead. Closing a lead dismisses its open follow-ups.
+- **Sales funnel:** how many leads have ever reached each stage, from stored history. Rates are null when there are no leads, never zero.
+- **Authorization:** every CRM action is owner-only. Agents and the system are refused. Personal-data text (emails, phone numbers) is refused in labels, summaries and reasons.
+- **Isolation:** administrators only. The operator account, ordinary signed-in users and anonymous visitors see no leads, history, interactions or follow-ups.
+- **Owner page** at `/admin/command-center/crm`: funnel, filterable lead list, create form, lead detail with reasons, stage moves, interactions, history, and follow-up decisions. Translated in Arabic, French and English.
+
+**Not built, and why:**
+- **AI enrichment of leads:** the directive asks for it to be configurable. It is not built: no model key is available, and the shared gateway has not been connected to CRM tasks. Scoring is rules only today.
+- **Command-center overview and analytics page:** the funnel is shown on the CRM page only. It is not yet on the overview or the analytics page.
+- **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
+- **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
+- **Rendered browser check of the CRM page:** not done.
+
 ## Remaining incomplete features
 
 Priority order follows the brief's list.
@@ -149,7 +171,7 @@ Priority order follows the brief's list.
 - **Campaign management (7):** not started. Only the `ai_campaigns` table exists.
 - **Content generation and approval (8):** content agents and approval gating exist. No provider is connected, and nothing is published.
 - **Analytics and performance (9):** monitoring and observability exist. The analytics workflow uses deterministic aggregation only. No live data source.
-- **Lead management and sales automation (10):** the sales workflow runs with the mock provider. No CRM integration.
+- **Lead management and sales automation (10):** CRM core built in session 5 (leads, pipeline, history, scoring, follow-up approval). Not yet built: AI enrichment, competitor-aware sales actions, and the sales agents' use of the CRM.
 - **Notifications and reporting (11):** core built (inbox service, rules, triggers, migration 0012 unapplied). Missing: the inbox page, the scheduled owner report, and an independent check for a missing worker.
 - **Admin dashboard and owner controls (12):** mostly built. Knowledge base create and edit forms are not built; the knowledge base is read-only in the dashboard.
 - **Agents and business memory:** agents do not yet read business memory or quality feedback.
@@ -167,11 +189,11 @@ Priority order follows the brief's list.
 
 ## Completion
 
-Estimated **about 68%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward. Session 3 completed notifications and added campaigns, content review and knowledge admin. Partial modules still count at half weight, because the Supabase store paths are not yet store-tested and no rendered browser check has been done.
+Estimated **about 72%** of planned platform features (session 5 moved the CRM from not started to built), by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward. Session 3 completed notifications and added campaigns, content review and knowledge admin. Partial modules still count at half weight, because the Supabase store paths are not yet store-tested and no rendered browser check has been done.
 
 ## Recommended next priorities
 
-1. Get the owner's approval to apply migrations to a staging project, then run the two-connection lease race and the browser checks for the scheduler page.
+1. Get the owner's approval to apply migrations 0002 to 0015 to a staging project, then run the two-connection lease race and the browser checks for the scheduler page.
 2. Configure one external trigger and an operator account in staging, and run the scheduler for a day before enabling it in production.
 3. Connect one AI provider (local free model preferred) and run the agents through the quality gate with real output.
 4. Build notifications and the scheduled owner report, using the scheduler's job kind mechanism.

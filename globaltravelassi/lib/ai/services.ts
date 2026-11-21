@@ -33,6 +33,8 @@ import { SupabaseCampaignStore } from "./campaigns/supabase-store";
 import { ContentReviewService } from "./content/review";
 import { SupabaseContentStore } from "./content/supabase-store";
 import type { Notice } from "./notifications/rules";
+import { CrmService } from "./crm/service";
+import { SupabaseCrmStore } from "./crm/supabase-store";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -65,6 +67,7 @@ export interface AiServices {
   notifications: NotificationService;
   campaigns: CampaignService;
   content: ContentReviewService;
+  crm: CrmService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -167,7 +170,8 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
       return out;
     },
   });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, audit, usage, providers: configs };
+  const crm = new CrmService({ store: new SupabaseCrmStore(db), audit, now, newId });
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {
