@@ -192,7 +192,12 @@ export default async function RequestPage({
                       <tr key={p.id}>
                         <td className="py-3 font-semibold text-navy-900">{formatMoney(p.amount, p.currency, locale)}</td>
                         <td className="py-3">{dict.paymentMethods[p.method]}</td>
-                        <td className="py-3">{dict.paymentStatuses[p.status]}</td>
+                        <td className="py-3">
+                          {dict.paymentStatuses[p.status]}
+                          {p.status === "rejected" && p.customer_visible_rejection_message && (
+                            <span className="mt-1 block text-xs leading-relaxed text-rose-800">{mp.rejectionNote}: {p.customer_visible_rejection_message}</span>
+                          )}
+                        </td>
                         <td className="py-3">{formatDate(p.received_at, locale)}</td>
                         <td className="py-3" dir="ltr">{p.reference || "—"}</td>
                       </tr>

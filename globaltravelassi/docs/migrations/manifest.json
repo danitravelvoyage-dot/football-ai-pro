@@ -19,7 +19,7 @@
     "supabase/migrations/0016_competitor_intelligence.sql": "efe34c3651b09a08204224ac6a3b22cad9f9b93948fec4b466bdeb9af77c850a",
     "supabase/migrations/0017_collaboration.sql": "5f93e540a6363c8f2e9c6803db5b3fcc7272c3a560b4b66dadf21d5dffd69194",
     "supabase/migrations/0018_owner_approval_center.sql": "86d5b8025c645e571fd6c742e5200cce2bfc84d7408bb308fe7594d796d7fa04",
-    "supabase/migrations/0019_manual_payments.sql": "1c93d4973f72509abefe340a84eb0163ec22463c5a73fc7fc625ba6708bbbba7",
+    "supabase/migrations/0019_manual_payments.sql": "8b25caaaa1e350b3b21c07ff9809f169beedca7491e0a64e1c21e999f9a8c516",
     "docs/migrations/0018_rollback.sql": "92a6f597a036938dead334a52e29f41d56a09c6d45bad7b29eb41487c91330bf"
   }
 }

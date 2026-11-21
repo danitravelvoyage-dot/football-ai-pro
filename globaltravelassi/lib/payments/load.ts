@@ -13,6 +13,24 @@ export async function loadPaymentMethodSettings(): Promise<MethodSetting[]> {
   return (data ?? []) as MethodSetting[];
 }
 
+/** The owner's history of method changes, newest first. Owner session only (RLS). */
+export async function loadPaymentMethodHistory(limit = 30) {
+  const supabase = await createServerSupabase();
+  const { data } = await supabase
+    .from("payment_method_history")
+    .select("method, changed_at, reason, previous, next")
+    .order("changed_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as { method: string; changed_at: string; reason: string; previous: Record<string, unknown>; next: Record<string, unknown> }[];
+}
+
+/** Proofs uploaded but never submitted and old enough to remove. Read only. */
+export async function loadOrphanProofs() {
+  const supabase = await createServerSupabase();
+  const { data } = await supabase.rpc("orphan_payment_proofs", { p_retention: "7 days" });
+  return (data ?? []) as { object_name: string; application_id: string; uploaded_at: string }[];
+}
+
 /**
  * Short-lived links to proof files, for the owner's review. The storage policy lets only the owner or the file's owner
  * read them; a link expires after five minutes.

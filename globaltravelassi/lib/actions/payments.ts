@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { selfServicePaymentMethods } from "@/lib/domain";
-import { checkProof, PROOF_MAX_BYTES, PROOF_MIME_TYPES, REASON_MAX, REASON_MIN } from "@/lib/payments/rules";
+import { checkProof, PROOF_MAX_BYTES, PROOF_MIME_TYPES, REASON_MAX, REASON_MIN, rejectionMessageIsValid } from "@/lib/payments/rules";
 import { adminSession } from "./admin-session";
+import { siteConfig } from "@/lib/config";
 import type { ActionState } from "./types";
 
 /** Maps a database refusal to a code the screen shows. The database message is never shown to the visitor. */
@@ -24,7 +25,7 @@ function paymentFailure(message: string): ActionState {
     [/already waiting/i, "already_waiting"],
     [/already paid/i, "already_paid"],
     [/already decided/i, "already_decided"],
-    [/Give a reason|Unknown decision/i, "invalid_input"],
+    [/Give a reason|Give the customer a message|Unknown decision/i, "invalid_input"],
     [/French, English and Arabic/i, "instructions_required"],
   ];
   const hit = rules.find(([pattern]) => pattern.test(message));
@@ -82,7 +83,10 @@ export async function submitPaymentEvidenceAction(input: {
 const decideSchema = z.object({
   paymentId: z.string().uuid(),
   decision: z.enum(["approve", "reject"]),
+  /** Internal: the owner's reason. Kept for the owner, never shown to the customer. */
   reason: z.string().trim().min(REASON_MIN).max(REASON_MAX),
+  /** Shown to the customer. Required for a rejection; the database enforces it too. */
+  customerMessage: z.string().trim().max(REASON_MAX),
 });
 
 /**
@@ -96,13 +100,16 @@ export async function decidePaymentAction(formData: FormData): Promise<ActionSta
     paymentId: String(formData.get("paymentId") ?? ""),
     decision: String(formData.get("decision") ?? ""),
     reason: String(formData.get("reason") ?? ""),
+    customerMessage: String(formData.get("customerMessage") ?? ""),
   });
   if (!parsed.success) return { ok: false, code: "invalid_input" };
+  if (parsed.data.decision === "reject" && !rejectionMessageIsValid(parsed.data.customerMessage)) return { ok: false, code: "invalid_input" };
 
   const { data, error } = await admin.supabase.rpc("decide_payment", {
     p_payment: parsed.data.paymentId,
     p_decision: parsed.data.decision,
     p_reason: parsed.data.reason,
+    p_customer_message: parsed.data.customerMessage || null,
   });
   if (error || !data) return paymentFailure(error?.message ?? "");
   refresh();
@@ -144,4 +151,35 @@ export async function saveMethodSettingsAction(formData: FormData): Promise<Acti
   if (error) return paymentFailure(error.message);
   refresh();
   return { ok: true, code: "saved" };
+}
+
+const purgeSchema = z.object({ reason: z.string().trim().min(REASON_MIN).max(REASON_MAX) });
+
+/**
+ * Owner only. Removes proofs that were uploaded and never submitted, and are older than the retention (at least seven
+ * days). Each file is checked again just before its removal, removed through the storage API, and then recorded in the
+ * audit. A proof a payment refers to is never listed, so it is never removed. Runs only when the owner asks for it.
+ */
+export async function purgeOrphanProofsAction(formData: FormData): Promise<ActionState> {
+  const admin = await adminSession();
+  if (!admin) return { ok: false, code: "unauthorized" };
+  const parsed = purgeSchema.safeParse({ reason: String(formData.get("reason") ?? "") });
+  if (!parsed.success) return { ok: false, code: "invalid_input" };
+  const why = parsed.data.reason;
+
+  const { data: candidates, error: listError } = await admin.supabase.rpc("orphan_payment_proofs", { p_retention: "7 days" });
+  if (listError) return paymentFailure(listError.message);
+
+  let removed = 0;
+  for (const row of (candidates ?? []) as { object_name: string }[]) {
+    const { data: stillEligible, error: checkError } = await admin.supabase.rpc("orphan_proof_still_eligible", { p_name: row.object_name, p_retention: "7 days" });
+    if (checkError || !stillEligible) continue;
+    const { error: removeError } = await admin.supabase.storage.from(siteConfig.documentBucket).remove([row.object_name]);
+    if (removeError) continue;
+    const { error: recordError } = await admin.supabase.rpc("record_orphan_purge", { p_name: row.object_name, p_reason: why, p_retention: "7 days" });
+    if (recordError) return { ok: false, code: "generic", id: String(removed) };
+    removed += 1;
+  }
+  refresh();
+  return { ok: true, code: "purged", id: String(removed) };
 }

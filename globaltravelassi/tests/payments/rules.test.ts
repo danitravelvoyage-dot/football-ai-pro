@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkProof, isDecidable, isOpenForPayment, offeredMethods, proofFolder, proofPathFor, reasonIsValid, PROOF_MAX_BYTES } from "@/lib/payments/rules";
+import { checkProof, isDecidable, isOpenForPayment, offeredMethods, proofFolder, proofPathFor, reasonIsValid, rejectionMessageIsValid, PROOF_MAX_BYTES } from "@/lib/payments/rules";
 
 const USER = "00000000-0000-0000-0000-0000000000b1";
 const APP = "00000000-0000-0000-0000-0000000000d1";
@@ -42,6 +42,8 @@ describe("proof file", () => {
     expect(checkProof({ userId: USER, applicationId: APP, path, mime: "application/pdf", size: 0 })).toEqual({ ok: false, code: "invalid_file" });
     expect(checkProof({ userId: USER, applicationId: APP, path, mime: "application/pdf", size: PROOF_MAX_BYTES + 1 })).toEqual({ ok: false, code: "invalid_file" });
     expect(checkProof({ userId: USER, applicationId: APP, path: `other/${APP}/x.pdf`, mime: "application/pdf", size: 10 })).toEqual({ ok: false, code: "invalid_path" });
+    // A document that is not a payment proof is not accepted as one.
+    expect(checkProof({ userId: USER, applicationId: APP, path: `${proofFolder(USER, APP)}passport.pdf`, mime: "application/pdf", size: 10 })).toEqual({ ok: false, code: "invalid_path" });
   });
 });
 
@@ -67,6 +69,12 @@ describe("the owner's decision", () => {
   it("only a payment waiting for review can be decided", () => {
     expect(isDecidable("pending_review")).toBe(true);
     for (const s of ["received", "rejected", "pending", "cancelled"]) expect(isDecidable(s)).toBe(false);
+  });
+
+  it("a rejection needs a message the customer can read, of 3 to 500 characters", () => {
+    expect(rejectionMessageIsValid("  no  ")).toBe(false);
+    expect(rejectionMessageIsValid("The amount on the proof is lower than the price.")).toBe(true);
+    expect(rejectionMessageIsValid("x".repeat(501))).toBe(false);
   });
 
   it("a reason needs 3 to 500 characters once trimmed", () => {

@@ -66,11 +66,15 @@ export async function getDocumentsFor(applicationId: string): Promise<DocumentRo
   return (data ?? []) as DocumentRow[];
 }
 
+/**
+ * The customer's own payments, through the customer_payments view: safe columns only. The owner's decision fields
+ * (who decided, the internal reason, the proof file) are not read here.
+ */
 export async function getPaymentsFor(applicationId: string): Promise<PaymentRow[]> {
   const supabase = await createServerSupabase();
   const { data } = await supabase
-    .from("payments")
-    .select("*")
+    .from("customer_payments")
+    .select("id, application_id, amount, currency, method, status, reference, received_at, created_at, submitted_at, customer_visible_rejection_message")
     .eq("application_id", applicationId)
     .order("created_at", { ascending: true });
   return (data ?? []) as PaymentRow[];

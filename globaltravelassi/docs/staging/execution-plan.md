@@ -1,9 +1,8 @@
-# Staging execution plan for migrations 0002 to 0018
+# Staging execution plan for migrations 0002 to 0019
 
 **Status: planned, nothing executed.** Migration 0018 and the migrations it depends on wait for the owner's approval. Production is out of scope.
 
 
-> **Update (manual payments):** migration `0019_manual_payments.sql` was added after this plan was written. It depends only on the base schema (0001) and must be added to the execution order, and its checksum recorded, before any staging run. The checksum table above lists 0002 to 0018 only.
 
 ## 1. Supabase inspection (read only, done in this phase)
 
@@ -24,7 +23,7 @@ What this shows:
 1. Owner reviews migration 0018, the rollback script and this plan.
 2. Owner approves creating a separate staging project.
 3. Owner approves the backup of the staging project before the first run (an empty staging project needs no data backup, but the schema backup is still taken).
-4. Owner approves the run of migrations 0002 to 0018 on staging, in order.
+4. Owner approves the run of migrations 0002 to 0019 on staging, in order.
 5. Owner approves the post-migration checks.
 6. Production is not part of this plan. A production migration needs a separate plan and approval.
 
@@ -52,6 +51,7 @@ Each file must match the checksum in `docs/migrations/manifest.json` before it i
 | 16 | `0016_competitor_intelligence.sql` | `efe34c3651b09a08…` |
 | 17 | `0017_collaboration.sql` | `5f93e540a6363c8f…` |
 | 18 | `0018_owner_approval_center.sql` | `86d5b8025c645e57…` |
+| 19 | `0019_manual_payments.sql` | `8b25caaaa1e350b3…` |
 
 The rollback script is `docs/migrations/0018_rollback.sql` (SHA-256 `92a6f597a036938d…`). It is not part of the chain.
 

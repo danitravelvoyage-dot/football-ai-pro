@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { formMessages } from "@/lib/validation/messages";
 import { selfServicePaymentMethods } from "@/lib/domain";
-import { loadPaymentMethodSettings } from "@/lib/payments/load";
-import { saveMethodSettingsAction } from "@/lib/actions/payments";
+import { loadOrphanProofs, loadPaymentMethodHistory, loadPaymentMethodSettings } from "@/lib/payments/load";
+import { purgeOrphanProofsAction, saveMethodSettingsAction } from "@/lib/actions/payments";
+import { formatDateTime } from "@/lib/i18n";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { TextAreaField, TextField } from "@/components/forms/Fields";
 import { Panel } from "@/components/admin/AdminUI";
@@ -29,6 +30,8 @@ export default async function AdminPaymentsPage({ params }: { params: Promise<{ 
   };
   const settings = await loadPaymentMethodSettings();
   const byMethod = new Map(settings.map((s) => [s.method, s]));
+  const [history, orphans] = await Promise.all([loadPaymentMethodHistory(), loadOrphanProofs()]);
+  const purgeMessages = { ...formMessages(dict), saved: mp.saved, purged: mp.purged, forbidden: mp.forbidden, invalid_input: mp.invalid, unauthorized: mp.unauthorized, generic: mp.generic };
 
   return (
     <>
@@ -55,6 +58,34 @@ export default async function AdminPaymentsPage({ params }: { params: Promise<{ 
           </Panel>
         );
       })}
+
+      <Panel title={mp.historyTitle}>
+        {history.length === 0 ? (
+          <p className="text-sm text-navy-600">{mp.historyEmpty}</p>
+        ) : (
+          <ul className="divide-y divide-navy-100 text-sm">
+            {history.map((h, i) => (
+              <li key={`${h.method}-${h.changed_at}-${i}`} className="py-3">
+                <p className="font-semibold text-navy-900">{dict.paymentMethods[h.method as keyof typeof dict.paymentMethods]} · {formatDateTime(h.changed_at, locale)}</p>
+                <p className="text-xs text-navy-600">{h.reason}</p>
+                <p className="text-xs text-navy-500">
+                  {h.previous.enabled ? mp.enabled : "—"} → {h.next.enabled ? mp.enabled : "—"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel title={mp.orphanTitle}>
+        <p className="mb-4 text-sm leading-relaxed text-navy-600">{mp.orphanNote}</p>
+        <p className="mb-4 text-sm font-semibold text-navy-900">{orphans.length === 0 ? mp.orphanNone : `${mp.orphanCount}: ${orphans.length}`}</p>
+        {orphans.length > 0 && (
+          <ActionForm action={purgeOrphanProofsAction} messages={purgeMessages} submitLabel={mp.purgeSubmit} pendingLabel={dict.common.loading} submitVariant="navy" confirmMessage={mp.purgeConfirm} className="grid gap-4">
+            <TextField name="reason" label={mp.reasonLabel} required maxLength={500} />
+          </ActionForm>
+        )}
+      </Panel>
     </>
   );
 }

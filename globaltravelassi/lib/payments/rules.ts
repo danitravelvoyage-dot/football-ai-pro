@@ -33,8 +33,15 @@ export type ProofProblem = "invalid_file" | "invalid_path";
 export function checkProof(input: { userId: string; applicationId: string; path: string; mime: string; size: number }): { ok: true } | { ok: false; code: ProofProblem } {
   if (!(PROOF_MIME_TYPES as readonly string[]).includes(input.mime)) return { ok: false, code: "invalid_file" };
   if (!Number.isInteger(input.size) || input.size < 1 || input.size > PROOF_MAX_BYTES) return { ok: false, code: "invalid_file" };
-  if (!input.path.startsWith(proofFolder(input.userId, input.applicationId))) return { ok: false, code: "invalid_path" };
+  // A proof lives in the request folder and carries the payment marker, which is how unsubmitted proofs are found.
+  if (!input.path.startsWith(proofFolder(input.userId, input.applicationId) + "payment-")) return { ok: false, code: "invalid_path" };
   return { ok: true };
+}
+
+/** The message a customer reads when a proof is rejected: 3 to 500 characters, required for a rejection. */
+export function rejectionMessageIsValid(message: string): boolean {
+  const m = message.trim();
+  return m.length >= REASON_MIN && m.length <= REASON_MAX;
 }
 
 export function isSelfServiceMethod(value: string): value is SelfServicePaymentMethod {

@@ -11,6 +11,9 @@ const state = vi.hoisted(() => ({
   adminUser: null as string | null,
   rpcCalls: [] as { fn: string; args: Record<string, unknown> }[],
   rpcResult: { data: null as unknown, error: null as { message: string } | null },
+  orphans: [] as string[],
+  eligibleNow: new Set<string>(),
+  storageRemoved: [] as string[],
 }));
 
 vi.mock("server-only", () => ({}));
@@ -19,15 +22,19 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const fakeClient = () => ({
   auth: { getUser: async () => ({ data: { user: state.user ? { id: state.user } : null } }) },
   from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.adminUser ? { role: "admin", is_active: true } : null }) }) }) }),
+  storage: { from: () => ({ remove: async (names: string[]) => { state.storageRemoved.push(...names); return { error: null }; } }) },
   rpc: async (fn: string, args: Record<string, unknown>) => {
     state.rpcCalls.push({ fn, args });
+    if (fn === "orphan_payment_proofs") return { data: state.orphans.map((object_name) => ({ object_name })), error: null };
+    if (fn === "orphan_proof_still_eligible") return { data: state.eligibleNow.has(String(args.p_name)), error: null };
+    if (fn === "record_orphan_purge") return { data: null, error: null };
     return state.rpcResult;
   },
 });
 
 vi.mock("@/lib/supabase/server", () => ({ createServerSupabase: async () => fakeClient() }));
 
-const { submitPaymentEvidenceAction, decidePaymentAction, saveMethodSettingsAction } = await import("@/lib/actions/payments");
+const { submitPaymentEvidenceAction, decidePaymentAction, saveMethodSettingsAction, purgeOrphanProofsAction } = await import("@/lib/actions/payments");
 
 const USER = "00000000-0000-0000-0000-0000000000b1";
 const APP = "00000000-0000-0000-0000-0000000000d1";
@@ -52,6 +59,9 @@ beforeEach(() => {
   state.adminUser = null;
   state.rpcCalls = [];
   state.rpcResult = { data: "00000000-0000-0000-0000-0000000000e1", error: null };
+  state.orphans = [];
+  state.eligibleNow = new Set();
+  state.storageRemoved = [];
 });
 
 describe("customer submits a proof", () => {
@@ -110,12 +120,27 @@ describe("owner decides a payment", () => {
     expect(state.rpcCalls).toHaveLength(0);
   });
 
-  it("an approval is confirmed, and a rejection is recorded as rejected", async () => {
+  it("an approval is confirmed with no customer message, and a rejection is recorded with one", async () => {
     state.adminUser = USER;
     state.rpcResult = { data: "received", error: null };
     expect(await decidePaymentAction(form({ paymentId: PAY, decision: "approve", reason: "Funds seen on the account" }))).toMatchObject({ ok: true, code: "confirmed" });
+    expect(state.rpcCalls.at(-1)?.args).toMatchObject({ p_decision: "approve", p_customer_message: null });
     state.rpcResult = { data: "rejected", error: null };
-    expect(await decidePaymentAction(form({ paymentId: PAY, decision: "reject", reason: "Amount is wrong" }))).toMatchObject({ ok: true, code: "rejected" });
+    expect(await decidePaymentAction(form({ paymentId: PAY, decision: "reject", reason: "Amount is wrong", customerMessage: "The amount on the proof is lower than the price." }))).toMatchObject({ ok: true, code: "rejected" });
+    expect(state.rpcCalls.at(-1)?.args).toMatchObject({ p_decision: "reject", p_customer_message: "The amount on the proof is lower than the price." });
+  });
+
+  it("a rejection without a message for the customer is refused before it reaches the database", async () => {
+    state.adminUser = USER;
+    expect(await decidePaymentAction(form({ paymentId: PAY, decision: "reject", reason: "Amount is wrong", customerMessage: "  " }))).toEqual({ ok: false, code: "invalid_input" });
+    expect(state.rpcCalls).toHaveLength(0);
+  });
+
+  it("the owner's internal reason is sent to the database, and the customer message is kept separate from it", async () => {
+    state.adminUser = USER;
+    state.rpcResult = { data: "rejected", error: null };
+    await decidePaymentAction(form({ paymentId: PAY, decision: "reject", reason: "Internal: suspected duplicate", customerMessage: "Please send a clearer copy." }));
+    expect(state.rpcCalls.at(-1)?.args).toMatchObject({ p_reason: "Internal: suspected duplicate", p_customer_message: "Please send a clearer copy." });
   });
 
   it("a second decision on the same payment is refused", async () => {
@@ -150,5 +175,48 @@ describe("owner configures methods", () => {
     state.adminUser = USER;
     expect(await saveMethodSettingsAction(settings({ method: "cash" }))).toEqual({ ok: false, code: "invalid_input" });
     expect(state.rpcCalls).toHaveLength(0);
+  });
+});
+
+describe("owner removes unsubmitted proofs", () => {
+  const OLD = `${USER}/${APP}/payment-old.pdf`;
+  const NEW = `${USER}/${APP}/payment-new.pdf`;
+  const stored = vi.hoisted(() => ({ removed: [] as string[], eligible: new Set<string>(), candidates: [] as string[] }));
+
+  beforeEach(() => {
+    stored.removed = [];
+    stored.candidates = [];
+    stored.eligible = new Set<string>();
+  });
+
+  it("a visitor who is not the owner cannot remove anything", async () => {
+    state.adminUser = null;
+    expect(await purgeOrphanProofsAction(form({ reason: "Old uploads" }))).toEqual({ ok: false, code: "unauthorized" });
+    expect(state.rpcCalls).toHaveLength(0);
+  });
+
+  it("a reason is required", async () => {
+    state.adminUser = USER;
+    expect(await purgeOrphanProofsAction(form({ reason: "x" }))).toEqual({ ok: false, code: "invalid_input" });
+    expect(state.rpcCalls).toHaveLength(0);
+  });
+
+  it("removes only the proofs that are still eligible, and records each removal", async () => {
+    state.adminUser = USER;
+    state.orphans = [OLD, NEW];
+    state.eligibleNow = new Set([OLD]);
+    const out = await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }));
+    expect(out).toEqual({ ok: true, code: "purged", id: "1" });
+    expect(state.storageRemoved).toEqual([OLD]);
+    expect(state.rpcCalls.filter((c) => c.fn === "record_orphan_purge").map((c) => c.args.p_name)).toEqual([OLD]);
+    expect(state.rpcCalls.find((c) => c.fn === "record_orphan_purge")?.args).toMatchObject({ p_reason: "Unsubmitted for over a week" });
+  });
+
+  it("a proof that stops being eligible before its removal is kept, and no removal is recorded for it", async () => {
+    state.adminUser = USER;
+    state.orphans = [OLD];
+    state.eligibleNow = new Set();
+    expect(await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }))).toEqual({ ok: true, code: "purged", id: "0" });
+    expect(state.storageRemoved).toEqual([]);
   });
 });

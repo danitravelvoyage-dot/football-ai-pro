@@ -93,12 +93,13 @@ export interface PaymentRow {
   note: string;
   received_at: string | null;
   created_at: string;
-  /** Proof of transfer, when the client sent one. Legacy and owner-recorded payments have none. */
+  /** Owner-side fields. Legacy and owner-recorded payments have none; customers never receive these (see customer_payments). */
   evidence_path?: string | null;
   submitted_at?: string | null;
   verified_by?: string | null;
   verified_at?: string | null;
   decision_reason?: string | null;
+  customer_visible_rejection_message?: string | null;
 }
 
 export interface ProfileRow {

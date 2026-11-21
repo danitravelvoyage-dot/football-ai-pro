@@ -166,6 +166,10 @@ export default async function AdminApplicationPage({ params }: { params: Promise
                             <input type="hidden" name="paymentId" value={p.id} />
                             <SelectField name="decision" label={mp.decideTitle} required defaultValue="approve" options={[{ value: "approve", label: mp.approve }, { value: "reject", label: mp.reject }]} />
                             <TextField name="reason" label={mp.reasonLabel} required maxLength={500} />
+                            <div className="sm:col-span-2">
+                              <TextAreaField name="customerMessage" label={mp.customerMessageLabel} rows={3} maxLength={500} />
+                              <p className="mt-1 text-xs text-navy-500">{mp.customerMessageHint}</p>
+                            </div>
                           </ActionForm>
                         )}
                       </div>

@@ -646,3 +646,43 @@ Migration `0019_manual_payments.sql` is **NOT applied**. Production and the live
 - A proof uploaded but never submitted stays in the customer's folder. It is not linked to a payment and can be deleted.
 - Legacy owner-recorded payments without a proof can still be marked received directly, as before.
 - Payment settings are stored, not versioned: only the audit keeps the history of changes.
+
+## Manual payments: final hardening (local, unapplied)
+
+Migration `0019_manual_payments.sql` is **NOT applied**. It was reviewed and amended in this pass. Its checksum is in `docs/migrations/manifest.json`. Production and the live project are untouched. Tests run on PGlite only.
+
+### Customer privacy
+- Customers have no row policy on `payments`. Their payments are read through `customer_payments`, a view with safe columns only. It excludes `verified_by`, `decision_reason`, `evidence_path`, `note`, `created_by`, `submitted_by` and the evidence file facts.
+- `customer_visible_rejection_message`: the only decision text a customer reads. It is required for a rejection, and an approval stores none. The owner's internal reason stays internal.
+- The owner's full audit (`payment_audit`) and history are readable by the owner only.
+
+### Unsubmitted proofs
+- A proof is "unsubmitted" when it is in the customer's request folder with the `payment-` marker, and no payment refers to it.
+- Eligible for removal only when: older than seven days (the floor, a shorter request is raised), unreferenced, and matching the marker. Proofs a payment refers to are never listed.
+- `orphan_payment_proofs()` lists them (owner only, read only). `orphan_proof_still_eligible()` rechecks one at the moment of removal. The application removes the file through the storage API, then `record_orphan_purge()` writes the audit.
+- No SQL delete of storage objects. The migration contains no `delete` statement.
+- Nothing runs on a schedule; removal runs only when the owner asks.
+
+### Settings history
+- `payment_method_history`: each change keeps the settings before and after, the owner, the time and the reason. Append-only; no client read or write; the owner reads it through the admin RLS policy.
+- Settings change only through `save_payment_method`.
+
+### Security fixes made in this pass
+- A customer could delete a referenced proof: the storage delete check ran as the customer, who cannot see the owner's payment rows. The check now runs with definer rights. Found by the tests, fixed, and tested.
+- A proof-bearing payment could be deleted by the owner. A delete trigger now refuses it.
+- A submitted proof must carry the `payment-` marker, so a passport cannot be submitted as a payment proof.
+- A rejection needs a customer message, enforced in the database and the action.
+
+### Tests
+- `tests/db/manual-payments.test.ts` (46 at last run): privacy of the view and base table, rejection messages, owner-only decisions, guards for direct updates (including the database owner's role), proof immutability, storage protection (customer and owner), cleanup eligibility, settings history.
+- `tests/payments/rules.test.ts` (9), `tests/payments/panel-render.test.ts` (12): server render of the customer panel for all three methods in French, English and Arabic.
+- `tests/actions/payments-actions.test.ts` (25): decision and customer-message rules, owner checks, the removal loop with a fake storage client.
+- `npm run verify` passes: 1,196 tests, lint with zero warnings, typecheck, production build.
+
+### Remaining risks
+- **Browser testing was not done.** The screens are server-rendered in tests and the build is clean. Clicking through them needs a running app with a Supabase project, and none is available here.
+- Concurrency is tested sequentially (PGlite is one connection). The row lock and unique index are designed for concurrent sessions, which needs a staging run on Postgres.
+- The database owner can disable triggers. The integrity report covers the audit and registry, not the payment guards yet.
+- Proof removal through the storage API has not been run against a real project. The eligibility rules are tested on PGlite only.
+- Deleting an application that has a payment is refused (the payment is kept). The existing admin action ignores the payment-deletion error, so the owner may see a generic failure.
+- A proof that is uploaded and never submitted stays in storage until the owner runs the removal after seven days.
