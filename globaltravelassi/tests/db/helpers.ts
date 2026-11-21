@@ -31,11 +31,11 @@ export async function asUser<T = Record<string, unknown>>(
   }
 }
 
-/** Applies every migration after 0001 up to and including `last` (for example "0018"), in order, as production would. */
-export async function applyMigrationsThrough(db: PGlite, last: string): Promise<void> {
+/** Applies every migration after 0001 up to and including `last` (for example "0018"), in order, except the skipped numbers. */
+export async function applyMigrationsThrough(db: PGlite, last: string, skip: string[] = []): Promise<void> {
   const dir = resolve(root, "supabase/migrations");
   const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".sql") && f > "0001_" && f.slice(0, 4) <= last)
+    .filter((f) => f.endsWith(".sql") && f > "0001_" && f.slice(0, 4) <= last && !skip.includes(f.slice(0, 4)))
     .sort();
   for (const f of files) await db.exec(readFileSync(resolve(dir, f), "utf8"));
 }

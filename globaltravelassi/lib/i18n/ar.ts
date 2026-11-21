@@ -368,6 +368,11 @@ export const ar: Dict = {
     navReview: "المراجعة",
     navSources: "المصادر",
     reviewUi: {
+      correctionTitle: "تسجيل تصحيح",
+      correctionHint: "التصحيح سجل جديد. القرار الذي يصححه يبقى كما هو.",
+      correctionItem: "عنصر تم البت فيه",
+      correctionReasonField: "سبب التصحيح (من 3 إلى 500 حرف)",
+      correctionSubmit: "تسجيل التصحيح",
       hint: "كل ما احتفظت به المنصة لقرارك: الأجوبة المحجوزة، والمخرجات المرفوضة، واختلافات المراحل، وحركات CRM التي تحتاج إلى موافقة.",
       note: "أنت وحدك من يقرر. كل قرار يُتحقق منه مقابل النسخة الحالية للعنصر، ويُسجَّل باسمك والوقت، ويُطبَّق مرة واحدة.",
       openTitle: "في انتظارك",
@@ -380,6 +385,7 @@ export const ar: Dict = {
         crm_stage_disagreement: "اختلاف في المرحلة",
         rejected_proposal: "مخرج مرفوض",
         crm_transition: "حركة CRM",
+        source_reactivation: "إعادة تفعيل مصدر",
       },
       decision: {
         approve: "موافقة",
@@ -448,7 +454,8 @@ export const ar: Dict = {
         disable: "تعطيل",
         enable: "تفعيل",
         revalidate: "تحديد كمُتحقَّق منه اليوم",
-        remove: "إزالة",
+        retire: "تقاعد",
+        request_reactivation: "طلب إعادة التفعيل",
       },
       categoryLabels: {
         government: "حكومي",
@@ -466,7 +473,7 @@ export const ar: Dict = {
       statusLabels: {
         active: "فعّال",
         disabled: "معطّل",
-        removed: "مُزال",
+        retired: "مُتقاعد",
       },
       msg: {
         saved: "تم الحفظ.",
@@ -478,6 +485,22 @@ export const ar: Dict = {
         not_found: "هذا الموقع لم يعد موجودا.",
       },
     },
+    correctionsUi: {
+      hint: "كل تصحيح سجله المالك على عنصر تم البت فيه. كل تصحيح يذكر القرار الذي يصححه.",
+      note: "القرار الأصلي لا يتغير أبدا. التصحيح سجل جديد يُكتب في سجل التدقيق مع من قام به ووقته.",
+      title: "التصحيحات المسجلة",
+      none: "لم يُسجَّل أي تصحيح.",
+      item: "العنصر",
+      original: "القرار الأصلي",
+      correction: "التصحيح",
+      who: "سجّله",
+      when: "سُجّل في",
+      unauthorized: "سجّل الدخول بحساب المالك للمتابعة.",
+      decidedBy: "قرار من",
+      decidedAt: "تم البت في",
+      reason: "السبب",
+    },
+    navCorrections: "التصحيحات",
     crmUi: {
       errorStale: "تغيّر هذا العميل بعد فتح الشاشة. أعد التحميل وحاول مرة أخرى.",
       pendingOwner: "يحتاج هذا الانتقال إلى موافقة المالك. وهو بانتظار في مركز الموافقات.",

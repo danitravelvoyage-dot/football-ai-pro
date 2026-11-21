@@ -1,0 +1,24 @@
+{
+  "note": "SHA-256 of each migration and rollback. Regenerate with scripts/migration-manifest.mjs after review.",
+  "files": {
+    "supabase/migrations/0001_init.sql": "22080b87799ffc1b75574b43183e5dc0739961a2ebe9b5deaecae02e5727c0cc",
+    "supabase/migrations/0002_ai_company.sql": "06b860344f8baa8e2a05c63a96deb6c646168db2894af4b6ab7d18196fd609aa",
+    "supabase/migrations/0003_agent_seed.sql": "be43a327cf4aef9a7c3a3b129112a79f7da770c7f77c03e440979f7ec54e5be8",
+    "supabase/migrations/0004_event_bus.sql": "27e7f1ae9d8112b921f950118c320c462593a16f0d16b3451fc0eb60d28fb2e2",
+    "supabase/migrations/0005_shared_context.sql": "ca6fc793ecd72c64feb27d9914023531a0eb5da42b6276b33219ee0c7de56bb7",
+    "supabase/migrations/0006_knowledge_base.sql": "c79ca9c3bcd8efae2f2380e42361866583e71420b93a800f1639b9ff089bbbfe",
+    "supabase/migrations/0007_approval_controls.sql": "7487fb4e5392359aee44ecc7937478f08e2447f35ca435f8d5729cb483c0648e",
+    "supabase/migrations/0008_quality_reviews.sql": "debc935e8ff04b80f64e685b4e0e754c8175daea027cc261316eca832d8c8e7e",
+    "supabase/migrations/0009_business_memory.sql": "595b4ba37e0619f4091b4af051a8f84731f621f369c7d50c7df715f2d4645318",
+    "supabase/migrations/0010_append_only_hardening.sql": "0922ebc0aa0750422c98298942283513115166153a7e5b8981f9d3382459f9bd",
+    "supabase/migrations/0011_scheduler.sql": "6d59f79981a97afa73af9b46f9986ddc61177ee0447735eddae53d6a59c15efe",
+    "supabase/migrations/0012_owner_notifications.sql": "41ec3663d5206c60dd1c717c53933c01868dc96a635a771c37a8076dd5f66245",
+    "supabase/migrations/0013_campaigns_content_knowledge.sql": "2dc7e1935cbeaff9f86c15a817869fb673097156316f07cd9061b69a31bd4741",
+    "supabase/migrations/0014_usage_token_split.sql": "f136f1495b498a9613b0e31f369cf27f092448f8f61238db110e909d40a785d0",
+    "supabase/migrations/0015_crm_sales.sql": "daec756a3c5111b3863b4701c63d936f39103da398116d845939235bc1d5f8ed",
+    "supabase/migrations/0016_competitor_intelligence.sql": "efe34c3651b09a08204224ac6a3b22cad9f9b93948fec4b466bdeb9af77c850a",
+    "supabase/migrations/0017_collaboration.sql": "5f93e540a6363c8f2e9c6803db5b3fcc7272c3a560b4b66dadf21d5dffd69194",
+    "supabase/migrations/0018_owner_approval_center.sql": "86d5b8025c645e571fd6c742e5200cce2bfc84d7408bb308fe7594d796d7fa04",
+    "docs/migrations/0018_rollback.sql": "92a6f597a036938dead334a52e29f41d56a09c6d45bad7b29eb41487c91330bf"
+  }
+}

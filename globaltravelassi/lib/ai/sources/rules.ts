@@ -3,14 +3,20 @@
  * NOT verify any content on it: a page on an approved host still needs its own factual check.
  */
 
+/** Retirement and reactivation requests are separate intents: a retired host cannot be edited, disabled or enabled. */
+export const SOURCE_INTENTS = ["edit", "disable", "enable", "revalidate", "retire", "request_reactivation"] as const;
+
 export const SOURCE_CATEGORIES = ["government", "immigration", "official_other", "other"] as const;
 export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
 
 export const JURISDICTIONS = ["dz", "ma", "tn", "fr", "all"] as const;
 export type Jurisdiction = (typeof JURISDICTIONS)[number];
 
-/** Removed is terminal: the row and its history stay, and agents never read it. */
-export const SOURCE_STATUSES = ["active", "disabled", "removed"] as const;
+/**
+ * active: agents may read it. disabled: paused by the owner, can be enabled again. retired: terminal for every owner
+ * action except an approved reactivation. A row is never deleted, so its identity and history stay.
+ */
+export const SOURCE_STATUSES = ["active", "disabled", "retired"] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
 
 /** Lower rank is preferred. Official government sources come before anything else when several answer a question. */

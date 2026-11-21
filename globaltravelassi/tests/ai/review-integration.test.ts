@@ -53,6 +53,7 @@ function center() {
     crm,
     communication: communication as never,
     tasks: { getTask: async () => ({ status: "failed" }) },
+    registry: { status: async () => null, reactivate: async () => undefined },
     orchestrator: { retryTask: async () => {} },
   });
   return { review, crm, crmStore, audit, clock, delivered, reviewStore };

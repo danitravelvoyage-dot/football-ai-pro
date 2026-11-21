@@ -368,6 +368,11 @@ export const fr: Dict = {
     navReview: "Revue",
     navSources: "Sources",
     reviewUi: {
+      correctionTitle: "Enregistrer une correction",
+      correctionHint: "Une correction est un nouvel enregistrement. La décision corrigée reste telle quelle.",
+      correctionItem: "Élément décidé",
+      correctionReasonField: "Motif de la correction (3 à 500 caractères)",
+      correctionSubmit: "Enregistrer la correction",
       hint: "Tout ce que la plateforme a retenu pour votre décision : réponses retenues, sorties rejetées, désaccords de stade et mouvements CRM à approuver.",
       note: "Vous seul décidez. Chaque décision est vérifiée contre la version actuelle de l'élément, enregistrée avec votre identité et l'heure, et appliquée une seule fois.",
       openTitle: "En attente de vous",
@@ -380,6 +385,7 @@ export const fr: Dict = {
         crm_stage_disagreement: "Désaccord de stade",
         rejected_proposal: "Sortie rejetée",
         crm_transition: "Mouvement CRM",
+        source_reactivation: "Réactivation de source",
       },
       decision: {
         approve: "Approuver",
@@ -448,7 +454,8 @@ export const fr: Dict = {
         disable: "Désactiver",
         enable: "Activer",
         revalidate: "Marquer comme vérifié aujourd'hui",
-        remove: "Retirer",
+        retire: "Retirer",
+        request_reactivation: "Demander la réactivation",
       },
       categoryLabels: {
         government: "Gouvernement",
@@ -466,7 +473,7 @@ export const fr: Dict = {
       statusLabels: {
         active: "Actif",
         disabled: "Désactivé",
-        removed: "Retiré",
+        retired: "Retiré",
       },
       msg: {
         saved: "Enregistré.",
@@ -478,6 +485,22 @@ export const fr: Dict = {
         not_found: "Cet hôte n'existe plus.",
       },
     },
+    correctionsUi: {
+      hint: "Chaque correction enregistrée par le propriétaire sur un élément décidé. Chacune cite la décision qu’elle corrige.",
+      note: "La décision d’origine n’est jamais modifiée. Une correction est un nouvel enregistrement, écrit dans la piste d’audit avec son auteur et sa date.",
+      title: "Corrections enregistrées",
+      none: "Aucune correction enregistrée.",
+      item: "Élément",
+      original: "Décision d’origine",
+      correction: "Correction",
+      who: "Enregistré par",
+      when: "Enregistré le",
+      unauthorized: "Connectez-vous en tant que propriétaire.",
+      decidedBy: "Décidé par",
+      decidedAt: "Décidé le",
+      reason: "Motif",
+    },
+    navCorrections: "Corrections",
     crmUi: {
       errorStale: "Ce prospect a changé après l'ouverture de l'écran. Rechargez et réessayez.",
       pendingOwner: "Ce passage exige l'approbation du propriétaire. Il attend dans le centre d'approbation.",

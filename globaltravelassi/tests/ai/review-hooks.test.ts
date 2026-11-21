@@ -39,6 +39,7 @@ async function rejectedWorkflow() {
     crm: {} as never,
     communication: {} as never,
     tasks: h.store,
+    registry: { status: async () => null, reactivate: async () => undefined },
     orchestrator: h.orch,
   });
   open = (i) => center.open(i);
@@ -133,6 +134,7 @@ describe("CRM stage disagreements reach the owner", () => {
       crm: crm as never,
       communication: { deliverApproved: async () => ({ eventId: "x" }) } as never,
       tasks: { getTask: async () => null },
+      registry: { status: async () => null, reactivate: async () => undefined },
       orchestrator: { retryTask: async () => {} },
     });
     const answers = new StageAnswerService({ runtime, crm, audit, now: clock.now, newId: () => `sa-${++n}`, review: { open: (i) => review.open(i) } });
@@ -203,6 +205,7 @@ describe("held answers are delivered exactly once", () => {
         },
       } as never,
       tasks: { getTask: async () => null },
+      registry: { status: async () => null, reactivate: async () => undefined },
       orchestrator: { retryTask: async () => {} },
     });
     const item = await review.open({

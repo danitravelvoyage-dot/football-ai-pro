@@ -13,7 +13,12 @@ import { Badge } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Sources", robots: { index: false, follow: false } };
 
-const INTENTS = ["edit", "disable", "enable", "revalidate", "remove"] as const;
+/** What the owner can do to a host, by its status. A retired host can only ask to come back. */
+const INTENTS_BY_STATUS = {
+  active: ["edit", "disable", "revalidate", "retire"],
+  disabled: ["edit", "enable", "retire"],
+  retired: ["request_reactivation"],
+} as const;
 
 export default async function SourcesPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale: raw } = await params;
@@ -75,7 +80,7 @@ export default async function SourcesPage({ params }: { params: Promise<{ locale
                   <input type="hidden" name="locale" value={locale} />
                   <input type="hidden" name="host" value={row.host} />
                   <input type="hidden" name="expectedVersion" value={row.version} />
-                  <SelectField name="intent" label={s.intent.edit} required defaultValue="edit" options={INTENTS.map((i) => ({ value: i, label: s.intent[i] }))} />
+                  <SelectField name="intent" label={s.intent.edit} required defaultValue={INTENTS_BY_STATUS[row.status][0]} options={INTENTS_BY_STATUS[row.status].map((i) => ({ value: i, label: s.intent[i] }))} />
                   <SelectField name="category" label={s.category} defaultValue={row.category} options={categoryOptions} />
                   <SelectField name="jurisdiction" label={s.jurisdiction} defaultValue={row.jurisdiction} options={jurisdictionOptions} />
                   <TextField name="purpose" label={s.purpose} defaultValue={row.purpose} maxLength={200} />

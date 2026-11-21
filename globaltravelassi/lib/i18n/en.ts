@@ -366,6 +366,11 @@ export const en = {
     navReview: "Review",
     navSources: "Sources",
     reviewUi: {
+      correctionTitle: "Record a correction",
+      correctionHint: "A correction is a new record. The decision it corrects stays as it was.",
+      correctionItem: "Decided item",
+      correctionReasonField: "Correction reason (3 to 500 characters)",
+      correctionSubmit: "Record correction",
       hint: "Everything the platform held back for your decision: held answers, rejected outputs, stage disagreements and CRM moves that need approval.",
       note: "Only you can decide. Each decision is checked against the item's current version, recorded with your identity and the time, and applied once.",
       openTitle: "Waiting for you",
@@ -378,6 +383,7 @@ export const en = {
         crm_stage_disagreement: "Stage disagreement",
         rejected_proposal: "Rejected output",
         crm_transition: "CRM move",
+        source_reactivation: "Source reactivation",
       },
       decision: {
         approve: "Approve",
@@ -446,7 +452,8 @@ export const en = {
         disable: "Disable",
         enable: "Enable",
         revalidate: "Mark as checked today",
-        remove: "Remove",
+        retire: "Retire",
+        request_reactivation: "Request reactivation",
       },
       categoryLabels: {
         government: "Government",
@@ -464,7 +471,7 @@ export const en = {
       statusLabels: {
         active: "Active",
         disabled: "Disabled",
-        removed: "Removed",
+        retired: "Retired",
       },
       msg: {
         saved: "Saved.",
@@ -476,6 +483,22 @@ export const en = {
         not_found: "This host no longer exists.",
       },
     },
+    correctionsUi: {
+      hint: "Every correction the owner has recorded against a decided item. Each one quotes the decision it corrects.",
+      note: "The original decision is never changed. A correction is a new record, written to the audit trail with its actor and time.",
+      title: "Recorded corrections",
+      none: "No corrections have been recorded.",
+      item: "Item",
+      original: "Original decision",
+      correction: "Correction",
+      who: "Recorded by",
+      when: "Recorded at",
+      unauthorized: "Sign in as the owner to continue.",
+      decidedBy: "Decided by",
+      decidedAt: "Decided at",
+      reason: "Reason",
+    },
+    navCorrections: "Corrections",
     crmUi: {
       errorStale: "This lead changed after you opened it. Reload and try again.",
       pendingOwner: "This move needs the owner's approval. It is waiting in the approval center.",

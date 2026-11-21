@@ -10,7 +10,7 @@
 
 create table if not exists public.ai_review_items (
   id uuid primary key default gen_random_uuid(),
-  kind text not null check (kind in ('held_answer', 'escalated_claim', 'crm_stage_disagreement', 'rejected_proposal', 'crm_transition')),
+  kind text not null check (kind in ('held_answer', 'escalated_claim', 'crm_stage_disagreement', 'rejected_proposal', 'crm_transition', 'source_reactivation')),
   status text not null default 'open' check (status in ('open', 'approved', 'rejected', 'revision_requested', 'expired')),
   agent text check (agent is null or char_length(agent) <= 60),
   run_id uuid references public.ai_workflow_runs (id) on delete cascade,
@@ -119,7 +119,7 @@ alter table public.ai_sources_allowlist add column if not exists jurisdiction te
   check (jurisdiction in ('dz', 'ma', 'tn', 'fr', 'all'));
 alter table public.ai_sources_allowlist add column if not exists status text not null default 'active';
 alter table public.ai_sources_allowlist drop constraint if exists ai_sources_allowlist_status_check;
-alter table public.ai_sources_allowlist add constraint ai_sources_allowlist_status_check check (status in ('active', 'disabled', 'removed'));
+alter table public.ai_sources_allowlist add constraint ai_sources_allowlist_status_check check (status in ('active', 'disabled', 'retired'));
 alter table public.ai_sources_allowlist add column if not exists expires_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists validated_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists updated_at timestamptz not null default now();
@@ -139,9 +139,14 @@ begin
       raise exception 'A new source starts at version 1.' using errcode = 'check_violation';
     end if;
   else
-    -- Removal is a terminal status, not a row delete. The row, its history and its approver stay.
-    if old.status = 'removed' then
-      raise exception 'A removed source cannot change.' using errcode = 'check_violation';
+    -- Retirement is terminal. The only way out is the approved reactivation function, which sets the flag below.
+    -- A row is never deleted: retirement keeps the host, its history and its approver.
+    if old.status = 'retired' and new.status is distinct from 'active' then
+      raise exception 'A retired source cannot change. Only an approved reactivation can bring it back.' using errcode = 'check_violation';
+    end if;
+    if old.status = 'retired' and new.status = 'active'
+       and coalesce(current_setting('gta.source_reactivation', true), '') is distinct from old.host then
+      raise exception 'A retired source can be reactivated only through an approved reactivation.' using errcode = 'check_violation';
     end if;
     if new.host is distinct from old.host or new.approved_by is distinct from old.approved_by or new.approved_at is distinct from old.approved_at then
       raise exception 'The host and the approver of a source cannot change.' using errcode = 'check_violation';
@@ -172,7 +177,9 @@ begin
     'db:' || coalesce(auth.uid()::text, 'no-session'),
     case
       when tg_op = 'INSERT' then 'db.source.added'
-      when new.status = 'removed' then 'db.source.removed'
+      when old.status = 'retired' and new.status = 'active' then 'db.source.reactivated'
+      when new.status = 'retired' then 'db.source.retired'
+      when new.status = 'disabled' and old.status is distinct from 'disabled' then 'db.source.disabled'
       else 'db.source.changed'
     end,
     'ai_source',
@@ -201,3 +208,110 @@ create policy ai_sources_owner_insert on public.ai_sources_allowlist for insert 
 drop policy if exists ai_sources_owner_update on public.ai_sources_allowlist;
 create policy ai_sources_owner_update on public.ai_sources_allowlist for update to authenticated using (public.is_admin()) with check (public.is_admin());
 revoke delete, truncate on public.ai_sources_allowlist from anon, authenticated;
+
+-- The only way out of 'retired'. Owner only. Needs an approved source_reactivation item for this host, whose payload
+-- names this exact version. Once used the row's version moves on, so the same approval cannot be used again.
+create or replace function public.ai_reactivate_source(p_host text, p_expected_version int, p_reason text, p_review uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only the owner can reactivate a source.' using errcode = '42501';
+  end if;
+  if char_length(coalesce(p_reason, '')) < 3 or char_length(p_reason) > 500 then
+    raise exception 'Every source change needs a reason of 3 to 500 characters.' using errcode = 'check_violation';
+  end if;
+  if not exists (
+    select 1 from public.ai_review_items r
+     where r.id = p_review
+       and r.kind = 'source_reactivation'
+       and r.status = 'approved'
+       and r.subject_ref = p_host
+       and (r.payload ->> 'version')::int = p_expected_version
+  ) then
+    raise exception 'No approved reactivation matches this source and version.' using errcode = 'check_violation';
+  end if;
+  perform set_config('gta.source_reactivation', p_host, true);
+  update public.ai_sources_allowlist
+     set status = 'active', last_change_reason = p_reason
+   where host = p_host and version = p_expected_version and status = 'retired';
+  if not found then
+    raise exception 'The source changed. Reload and try again.' using errcode = 'check_violation';
+  end if;
+end $$;
+
+revoke all on function public.ai_reactivate_source(text, int, text, uuid) from public, anon;
+grant execute on function public.ai_reactivate_source(text, int, text, uuid) to authenticated;
+
+-- ---------- 4. Audit integrity: client roles cannot change the audit trail; the owner can check that it holds -----------
+
+-- The audit trail is append-only for client roles, by privilege as well as by trigger (the trigger is in 0010).
+-- Insert stays: the application writes its events through the owner's session under RLS.
+revoke update, delete, truncate on public.ai_events from anon, authenticated;
+
+-- A read-only report of every integrity check. A database owner can disable a trigger; this report is how that shows.
+create or replace function public.ai_audit_integrity_report()
+returns table (check_name text, passed boolean, detail text)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only the owner can read the audit integrity report.' using errcode = '42501';
+  end if;
+
+  return query
+  select 'ai_events_append_only_trigger'::text,
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_events' and t.tgname = 'ai_events_append_only' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Row trigger that refuses UPDATE and DELETE on ai_events (migration 0010)'::text
+  union all
+  select 'ai_events_no_truncate_trigger',
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_events' and t.tgname = 'ai_events_no_truncate' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Statement trigger that refuses TRUNCATE on ai_events (migration 0010)'
+  union all
+  select 'review_items_guard_trigger',
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_review_items' and t.tgname = 'ai_review_items_guard' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Decided review items cannot change (0018)'
+  union all
+  select 'review_items_audit_trigger',
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_review_items' and t.tgname = 'ai_review_items_audit' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Every review decision is written to ai_events by the database (0018)'
+  union all
+  select 'sources_guard_trigger',
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_sources_allowlist' and t.tgname = 'ai_sources_allowlist_guard' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Source rows need a reason per change, keep host and approver, and retire terminally (0018)'
+  union all
+  select 'sources_audit_trigger',
+         exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'ai_sources_allowlist' and t.tgname = 'ai_sources_allowlist_audit' and not t.tgisinternal and t.tgenabled in ('O', 'A')),
+         'Every source change is written to ai_events by the database (0018)'
+  union all
+  select 'ai_events_client_update_revoked',
+         not has_table_privilege('authenticated', 'public.ai_events', 'UPDATE') and not has_table_privilege('anon', 'public.ai_events', 'UPDATE'),
+         'API roles hold no UPDATE on ai_events'
+  union all
+  select 'ai_events_client_delete_revoked',
+         not has_table_privilege('authenticated', 'public.ai_events', 'DELETE') and not has_table_privilege('anon', 'public.ai_events', 'DELETE'),
+         'API roles hold no DELETE on ai_events'
+  union all
+  select 'review_items_client_delete_revoked',
+         not has_table_privilege('authenticated', 'public.ai_review_items', 'DELETE') and not has_table_privilege('anon', 'public.ai_review_items', 'DELETE'),
+         'API roles hold no DELETE on ai_review_items'
+  union all
+  select 'sources_client_delete_revoked',
+         not has_table_privilege('authenticated', 'public.ai_sources_allowlist', 'DELETE') and not has_table_privilege('anon', 'public.ai_sources_allowlist', 'DELETE'),
+         'API roles hold no DELETE on ai_sources_allowlist'
+  union all
+  select 'sources_broad_policy_gone',
+         not exists (select 1 from pg_policies where tablename = 'ai_sources_allowlist' and policyname = 'ai_sources_admin'),
+         'The broad "for all" policy from 0002 is replaced'
+  union all
+  select 'reactivation_function_present',
+         exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'ai_reactivate_source'),
+         'Retired hosts come back only through ai_reactivate_source (0018)';
+end $$;
+
+revoke all on function public.ai_audit_integrity_report() from public, anon;
+grant execute on function public.ai_audit_integrity_report() to authenticated;

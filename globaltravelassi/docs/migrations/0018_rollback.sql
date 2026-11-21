@@ -8,7 +8,8 @@
 --      ai_sources_allowlist. The full rows are copied to ai_sources_allowlist_archive and checksum-verified first.
 --   3. ai_leads.version is removed. It is a concurrency token only; the next write after a restore has no version to compare.
 --   4. Triggers, functions and policies added by 0018 are dropped. The 0002 policy is restored. The delete grant is NOT
---      restored: no client role can delete a registry host after the rollback either.
+--      restored: no client role can delete a registry host after the rollback either. The audit trail keeps its revoked
+--      UPDATE, DELETE and TRUNCATE for client roles: the rollback does not reopen the audit table.
 -- NOT touched: ai_events (audit history, append-only), lead rows, host rows (host, purpose, approver), any other table.
 -- The whole script is one transaction: a failed check leaves the database exactly as it was.
 
@@ -67,6 +68,8 @@ drop trigger if exists ai_sources_allowlist_audit on public.ai_sources_allowlist
 drop trigger if exists ai_sources_allowlist_guard on public.ai_sources_allowlist;
 drop function if exists public.ai_source_audit();
 drop function if exists public.ai_source_guard();
+drop function if exists public.ai_reactivate_source(text, int, text, uuid);
+drop function if exists public.ai_audit_integrity_report();
 drop policy if exists ai_sources_read on public.ai_sources_allowlist;
 drop policy if exists ai_sources_owner_insert on public.ai_sources_allowlist;
 drop policy if exists ai_sources_owner_update on public.ai_sources_allowlist;

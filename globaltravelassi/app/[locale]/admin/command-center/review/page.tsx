@@ -5,7 +5,7 @@ import { formMessages } from "@/lib/validation/messages";
 import { loadReview } from "@/lib/ai/review/load";
 import { ALLOWED_DECISIONS, type ReviewKind } from "@/lib/ai/review/rules";
 import type { ReviewItem } from "@/lib/ai/review/service";
-import { decideReviewAction } from "@/lib/actions/review";
+import { decideReviewAction, recordReviewCorrectionAction } from "@/lib/actions/review";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { SelectField, TextField } from "@/components/forms/Fields";
 import { DataTable, Panel } from "@/components/admin/AdminUI";
@@ -20,6 +20,7 @@ const KIND_TONE: Record<ReviewKind, "neutral" | "success" | "warning" | "info" |
   crm_stage_disagreement: "warning",
   rejected_proposal: "danger",
   crm_transition: "info",
+  source_reactivation: "warning",
 };
 
 /** Source addresses found in the evidence. Only https addresses become links; anything else is shown as text. */
@@ -130,6 +131,23 @@ export default async function ReviewPage({ params }: { params: Promise<{ locale:
           </DataTable>
         )}
       </Panel>
+
+      {decided.length > 0 && (
+        <Panel title={r.correctionTitle}>
+          <p className="mb-4 text-sm text-navy-600">{r.correctionHint}</p>
+          <ActionForm action={recordReviewCorrectionAction} messages={messages} submitLabel={r.correctionSubmit} pendingLabel={dict.common.loading} submitVariant="navy" resetOnSuccess className="grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="locale" value={locale} />
+            <SelectField
+              name="itemId"
+              label={r.correctionItem}
+              required
+              defaultValue={decided[0]!.id}
+              options={decided.slice(0, 100).map((i) => ({ value: i.id, label: `${r.kind[i.kind]} · ${r.status[i.status]} · ${i.id.slice(0, 8)}` }))}
+            />
+            <TextField name="reason" label={r.correctionReasonField} required maxLength={500} />
+          </ActionForm>
+        </Panel>
+      )}
     </>
   );
 }

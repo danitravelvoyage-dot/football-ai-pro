@@ -134,13 +134,40 @@ describe("source registry guard", () => {
     await expect(asUser(db, OPERATOR, `insert into public.ai_sources_allowlist (host, purpose, last_change_reason) values ('op.gov.dz', 'x y', '${REASON}')`)).rejects.toThrow();
   });
 
-  it("removal is a terminal status: the row stays, and nothing changes it afterwards", async () => {
-    await asUser(db, ADMIN, `update public.ai_sources_allowlist set status = 'removed', last_change_reason = 'Not used any more' where host = 'owner-added.gov.dz'`);
-    const removed = await db.query<{ status: string }>(`select status from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`);
-    expect(removed.rows[0]?.status).toBe("removed");
-    await expect(exec(`update public.ai_sources_allowlist set status = 'active', last_change_reason = '${REASON}' where host = 'owner-added.gov.dz'`)).rejects.toThrow(/removed source cannot change/);
+  it("retirement is terminal: the row stays, and a plain update cannot bring it back", async () => {
+    await asUser(db, ADMIN, `update public.ai_sources_allowlist set status = 'retired', last_change_reason = 'Not used any more' where host = 'owner-added.gov.dz'`);
+    const retired = await db.query<{ status: string }>(`select status from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`);
+    expect(retired.rows[0]?.status).toBe("retired");
+    await expect(exec(`update public.ai_sources_allowlist set status = 'active', last_change_reason = '${REASON}' where host = 'owner-added.gov.dz'`)).rejects.toThrow(/retired source cannot change|approved reactivation/);
+    await expect(exec(`update public.ai_sources_allowlist set purpose = 'Other', last_change_reason = '${REASON}' where host = 'owner-added.gov.dz'`)).rejects.toThrow(/retired source cannot change/);
     const audit = await db.query<{ event_type: string }>(`select event_type from public.ai_events where entity_id = 'owner-added.gov.dz' order by ts`);
-    expect(audit.rows.map((r) => r.event_type)).toEqual(["db.source.added", "db.source.changed", "db.source.removed"]);
+    expect(audit.rows.map((r) => r.event_type)).toEqual(["db.source.added", "db.source.changed", "db.source.retired"]);
+  });
+
+  it("reactivation is refused without an approved request for this host and version, even for the owner", async () => {
+    await expect(asUser(db, ADMIN, `select public.ai_reactivate_source('owner-added.gov.dz', 3, '${REASON}', '00000000-0000-0000-0000-0000000000ff')`)).rejects.toThrow(/No approved reactivation matches/);
+    await expect(asUser(db, OPERATOR, `select public.ai_reactivate_source('owner-added.gov.dz', 3, '${REASON}', '00000000-0000-0000-0000-0000000000ff')`)).rejects.toThrow(/permission denied|Only the owner/);
+    await expect(asUser(db, null, `select public.ai_reactivate_source('owner-added.gov.dz', 3, '${REASON}', '00000000-0000-0000-0000-0000000000ff')`)).rejects.toThrow(/permission denied/);
+    const still = await db.query<{ status: string }>(`select status from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`);
+    expect(still.rows[0]?.status).toBe("retired");
+  });
+
+  it("an approved reactivation brings the host back once, and the approval cannot be replayed", async () => {
+    const current = (await db.query<{ version: number }>(`select version from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`)).rows[0]!.version;
+    const review = "00000000-0000-0000-0000-0000000000f1";
+    await exec(`insert into public.ai_review_items (id, kind, subject_ref, summary, expires_at, status, decided_by, decided_at, decision_reason, version, payload)
+      values ('${review}', 'source_reactivation', 'owner-added.gov.dz', 'Reactivation', now() + interval '7 days', 'approved', '${ADMIN}', now(), 'Checked again', 2,
+              '{"host": "owner-added.gov.dz", "version": ${current}}')`);
+
+    await asUser(db, ADMIN, `select public.ai_reactivate_source('owner-added.gov.dz', ${current}, '${REASON}', '${review}')`);
+    const after = await db.query<{ status: string; version: number }>(`select status, version from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`);
+    expect(after.rows[0]).toEqual({ status: "active", version: current + 1 });
+    const audit = await db.query<{ event_type: string }>(`select event_type from public.ai_events where entity_id = 'owner-added.gov.dz' and event_type = 'db.source.reactivated'`);
+    expect(audit.rows).toHaveLength(1);
+
+    await expect(asUser(db, ADMIN, `select public.ai_reactivate_source('owner-added.gov.dz', ${current}, '${REASON}', '${review}')`)).rejects.toThrow(/source changed|No approved reactivation/);
+    const still = await db.query<{ status: string }>(`select status from public.ai_sources_allowlist where host = 'owner-added.gov.dz'`);
+    expect(still.rows[0]?.status).toBe("active");
   });
 
   it("the audit trail for sources cannot be rewritten or deleted", async () => {

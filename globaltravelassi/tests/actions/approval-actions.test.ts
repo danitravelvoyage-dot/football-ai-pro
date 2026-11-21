@@ -161,16 +161,29 @@ describe("source mutations through the action", () => {
     expect(await state.services.sources.activeHosts()).toEqual(["visa.example.gov.dz"]);
   });
 
-  it("removal is terminal: the row stays, and a later change is refused", async () => {
+  it("retirement is terminal: the row stays, and a later owner change is refused", async () => {
     await addSourceAction(form(add()));
     const row = (await state.services.sources.list({ kind: "owner", id: TEST_OWNER.id }))[0]!;
-    expect(await changeSourceAction(form({ host: row.host, intent: "remove", expectedVersion: String(row.version), reason: "Not used any more" }))).toMatchObject({ ok: true });
+    expect(await changeSourceAction(form({ host: row.host, intent: "retire", expectedVersion: String(row.version), reason: "Not used any more" }))).toMatchObject({ ok: true });
     expect(await state.services.sources.activeHosts()).toEqual([]);
-    expect((await state.services.sourceStore.get(row.host))?.status).toBe("removed");
+    expect((await state.services.sourceStore.get(row.host))?.status).toBe("retired");
     const later = await changeSourceAction(form({ host: row.host, intent: "enable", expectedVersion: String(row.version + 1), reason: "Bring it back" }));
     expect(later).toEqual({ ok: false, code: "rule_refused" });
   });
-});
+
+  it("a retired host can only ask to come back; the request is a pending approval, not a change", async () => {
+    await addSourceAction(form(add()));
+    const row = (await state.services.sources.list({ kind: "owner", id: TEST_OWNER.id }))[0]!;
+    await changeSourceAction(form({ host: row.host, intent: "retire", expectedVersion: String(row.version), reason: "Not used any more" }));
+    const retired = (await state.services.sources.list({ kind: "owner", id: TEST_OWNER.id }))[0]!;
+    const asked = await changeSourceAction(form({ host: retired.host, intent: "request_reactivation", expectedVersion: String(retired.version), reason: "Confirmed the new address" }));
+    expect(asked).toMatchObject({ ok: true, code: "pending_owner" });
+    expect((await state.services.sourceStore.get(row.host))?.status).toBe("retired");
+    const approved = await decideReviewAction(form({ itemId: (asked as { id: string }).id, decision: "approve", reason: "Checked it again", expectedVersion: "1" }));
+    expect(approved).toMatchObject({ ok: true, code: "saved" });
+    expect(await state.services.sources.activeHosts()).toEqual([row.host]);
+  });
+  });
 
 describe("CRM transitions through the action", () => {
   async function newLead() {

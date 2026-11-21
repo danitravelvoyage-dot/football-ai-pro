@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAiServices } from "@/lib/ai/services";
-import { SourceConflictError, SourceForbiddenError, SourceNotFoundError, SourceRemovedError } from "@/lib/ai/sources/service";
-import { SourceRuleError, SOURCE_CATEGORIES, JURISDICTIONS } from "@/lib/ai/sources/rules";
+import { SourceConflictError, SourceForbiddenError, SourceNotApprovedError, SourceNotFoundError, SourceRetiredError } from "@/lib/ai/sources/service";
+import { SourceRuleError, SOURCE_CATEGORIES, JURISDICTIONS, SOURCE_INTENTS } from "@/lib/ai/sources/rules";
 import { ownerId } from "./ai";
 import { formObject, localeFrom } from "./helpers";
 import type { ActionState } from "./types";
@@ -23,7 +23,7 @@ const addSchema = z.object({
 
 const changeSchema = z.object({
   host: z.string().trim().min(4).max(255),
-  intent: z.enum(["edit", "disable", "enable", "revalidate", "remove"]),
+  intent: z.enum(SOURCE_INTENTS),
   expectedVersion: z.coerce.number().int().min(1),
   category: z.enum(SOURCE_CATEGORIES).optional(),
   jurisdiction: z.enum(JURISDICTIONS).optional(),
@@ -36,7 +36,7 @@ function failure(error: unknown): ActionState {
   if (error instanceof SourceForbiddenError) return { ok: false, code: "forbidden" };
   if (error instanceof SourceConflictError) return { ok: false, code: "stale" };
   if (error instanceof SourceNotFoundError) return { ok: false, code: "not_found" };
-  if (error instanceof SourceRemovedError) return { ok: false, code: "rule_refused" };
+  if (error instanceof SourceRetiredError || error instanceof SourceNotApprovedError) return { ok: false, code: "rule_refused" };
   if (error instanceof SourceRuleError) return { ok: false, code: "invalid_input" };
   return { ok: false, code: "generic" };
 }
@@ -60,7 +60,10 @@ export async function addSourceAction(formData: FormData): Promise<ActionState> 
   }
 }
 
-/** Owner only. Edits, disables, enables, revalidates or removes one host, checked against the version the owner saw. */
+/**
+ * Owner only. Edits, pauses, resumes, retires, revalidates one host, or asks for a retired host to come back. Each change
+ * is checked against the version the owner saw. Reactivation is decided in the approval center, not here.
+ */
 export async function changeSourceAction(formData: FormData): Promise<ActionState> {
   const locale = localeFrom(formData);
   const owner = await ownerId();
@@ -78,8 +81,12 @@ export async function changeSourceAction(formData: FormData): Promise<ActionStat
       await services.sources.setStatus(actor, d.host, d.expectedVersion, d.intent === "disable" ? "disabled" : "active", d.reason);
     } else if (d.intent === "revalidate") {
       await services.sources.revalidate(actor, d.host, d.expectedVersion, d.reason);
+    } else if (d.intent === "retire") {
+      await services.sources.retire(actor, d.host, d.expectedVersion, d.reason);
     } else {
-      await services.sources.remove(actor, d.host, d.expectedVersion, d.reason);
+      const reviewId = await services.sources.requestReactivation(actor, d.host, d.expectedVersion, d.reason);
+      refresh(locale);
+      return { ok: true, code: "pending_owner", id: reviewId };
     }
     refresh(locale);
     return { ok: true, code: "saved" };

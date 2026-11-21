@@ -56,6 +56,13 @@ export class SupabaseSourceStore implements SourceStore {
     if (error) throw new Error(`Source registry error: ${error.message.slice(0, 160)}`);
   }
 
+  /** Retired to active through the database function, which checks the approved review item again. */
+  async reactivate(host: string, expectedVersion: number, reason: string, reviewId: string): Promise<boolean> {
+    const { error } = await this.db.rpc("ai_reactivate_source", { p_host: host, p_expected_version: expectedVersion, p_reason: reason, p_review: reviewId });
+    if (error) throw new Error(`Source registry error: ${error.message.slice(0, 160)}`);
+    return true;
+  }
+
   /** The version and updated time are set by the database trigger; the write matches only the version the caller read. */
   async update(host: string, expectedVersion: number, next: SourceRecord): Promise<boolean> {
     const { host: _x, approved_by: _a, approved_at: _p, version: _v, updated_at: _u, ...payload } = toRow(next);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { REVIEW_KINDS, DECISIONS, ALLOWED_DECISIONS, DECISION_TO_STATUS, type Decision, type ReviewKind } from "@/lib/ai/review/rules";
 import { ReviewForbiddenError, ReviewRuleError, type ReviewOpenInput } from "@/lib/ai/review/service";
-import { buildApprovalServices, heldPayload, TEST_OWNER } from "./approval-fixtures";
+import { buildApprovalServices, heldPayload, seedRetiredHost, TEST_OWNER } from "./approval-fixtures";
 
 const AGENT = { kind: "agent" as const, agent: "CRMAgent" as const };
 const SYSTEM = { kind: "system" as const };
@@ -10,6 +10,7 @@ const REASON = "Checked against the record";
 /** A fresh, open item of each kind, with the payload its effect needs. */
 async function openItem(kind: ReviewKind, svc: ReturnType<typeof buildApprovalServices>) {
   const base = { agent: null, runId: null, taskId: null, leadId: null, subjectRef: `subject-${kind}`, summary: `Item ${kind}`, evidence: { codes: ["x"] } };
+  const retired = kind === "source_reactivation" ? await seedRetiredHost(svc) : null;
   const lead = kind === "crm_transition" ? await svc.crm.createLead(TEST_OWNER, { label: "Enquiry", source: "manual", applicationId: null, destinationCountry: "FR", nationality: "DZ", travelDate: null, interest: "visa" }) : null;
   const payloads: Record<ReviewKind, Record<string, unknown>> = {
     held_answer: heldPayload,
@@ -17,16 +18,17 @@ async function openItem(kind: ReviewKind, svc: ReturnType<typeof buildApprovalSe
     crm_stage_disagreement: { leadId: "l", recordStage: "new" },
     rejected_proposal: { taskId: "task-1", runId: "run-1", agent: "ResearchAgent", stepKey: "research" },
     crm_transition: { leadId: lead?.id, from: "new", to: "contacted", expectedVersion: 1, reason: null, requestedBy: TEST_OWNER.id },
+    source_reactivation: { host: retired?.host, version: retired?.version, reason: "Source is back", requestedBy: TEST_OWNER.id },
   };
   const input: ReviewOpenInput = {
     kind,
     ...base,
     taskId: kind === "rejected_proposal" ? "task-1" : null,
     leadId: lead?.id ?? null,
-    subjectRef: lead?.id ?? base.subjectRef,
+    subjectRef: lead?.id ?? retired?.host ?? base.subjectRef,
     payload: payloads[kind],
   } as ReviewOpenInput;
-  return svc.review.open(input);
+  return { item: await svc.review.open(input), retired };
 }
 
 describe("every review item type: who may decide, and what each allowed decision does", () => {
@@ -36,7 +38,7 @@ describe("every review item type: who may decide, and what each allowed decision
 
       it(`${kind} / ${decision}: owner ${allowed ? "may" : "may not"} decide; agents and the system never can`, async () => {
         const svc = buildApprovalServices();
-        const item = await openItem(kind, svc);
+        const { item, retired } = await openItem(kind, svc);
 
         for (const actor of [AGENT, SYSTEM]) {
           await expect(svc.review.decide(actor, item.id, decision, REASON, 1)).rejects.toBeInstanceOf(ReviewForbiddenError);
@@ -58,7 +60,9 @@ describe("every review item type: who may decide, and what each allowed decision
         // The effect: only the kinds that have one act, and only on the decisions that should.
         if (kind === "held_answer" && decision === "approve") expect(svc.deliveries).toEqual([{ questionId: "q-1", toAgent: "SalesAgent" }]);
         else if (kind === "rejected_proposal" && decision === "request_revision") expect(svc.retries).toEqual(["task-1"]);
-        else if (kind === "crm_transition" && decision === "approve") {
+        else if (kind === "source_reactivation" && decision === "approve") {
+          expect((await svc.sources.status(retired!.host))?.status).toBe("active");
+        } else if (kind === "crm_transition" && decision === "approve") {
           const lead = (await svc.crmStore.listLeads({ includeArchived: false, limit: 10 }))[0];
           expect(lead?.stage).toBe("contacted");
         } else {
@@ -71,7 +75,7 @@ describe("every review item type: who may decide, and what each allowed decision
 
   it("a rejected proposal can never be approved, which would mean a task runs without its output being reviewed", async () => {
     const svc = buildApprovalServices();
-    const item = await openItem("rejected_proposal", svc);
+    const { item } = await openItem("rejected_proposal", svc);
     await expect(svc.review.decide(TEST_OWNER, item.id, "approve", REASON, 1)).rejects.toBeInstanceOf(ReviewRuleError);
     expect(svc.retries).toHaveLength(0);
   });

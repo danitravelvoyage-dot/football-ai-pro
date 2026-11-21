@@ -114,6 +114,15 @@ describe("rollback of 0018", () => {
     expect(leadVersion.rows[0]?.n).toBe(0);
   });
 
+  it("removes the reactivation and report functions, and keeps the audit trail closed to client roles", async () => {
+    const fns = await db.query<{ n: number }>(`select count(*)::int as n from pg_proc where proname in ('ai_reactivate_source', 'ai_audit_integrity_report')`);
+    expect(fns.rows[0]?.n).toBe(0);
+    const priv = await db.query<{ update: boolean; del: boolean }>(
+      `select has_table_privilege('authenticated', 'public.ai_events', 'UPDATE') as update, has_table_privilege('authenticated', 'public.ai_events', 'DELETE') as del`,
+    );
+    expect(priv.rows[0]).toEqual({ update: false, del: false });
+  });
+
   it("the archives are readable by the owner only", async () => {
     const policies = await db.query<{ policyname: string }>(`select policyname from pg_policies where tablename = 'ai_review_items_archive'`);
     expect(policies.rows.map((p) => p.policyname)).toEqual(["ai_review_items_archive_read"]);

@@ -6,7 +6,7 @@
  * revision, but cannot override the factual check.
  */
 
-export const REVIEW_KINDS = ["held_answer", "escalated_claim", "crm_stage_disagreement", "rejected_proposal", "crm_transition"] as const;
+export const REVIEW_KINDS = ["held_answer", "escalated_claim", "crm_stage_disagreement", "rejected_proposal", "crm_transition", "source_reactivation"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export const REVIEW_STATUSES = ["open", "approved", "rejected", "revision_requested", "expired"] as const;
@@ -22,6 +22,7 @@ export const ALLOWED_DECISIONS: Record<ReviewKind, readonly Decision[]> = {
   crm_stage_disagreement: ["approve", "reject", "request_revision"],
   rejected_proposal: ["reject", "request_revision"],
   crm_transition: ["approve", "reject"],
+  source_reactivation: ["approve", "reject"],
 };
 
 export const DECISION_TO_STATUS: Record<Decision, ReviewStatus> = {

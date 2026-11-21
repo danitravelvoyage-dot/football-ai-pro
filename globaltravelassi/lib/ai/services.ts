@@ -47,6 +47,8 @@ import { ReviewService, type ReviewOpenInput } from "./review/service";
 import { SupabaseReviewStore } from "./review/supabase-store";
 import { createReviewCenter } from "./review/center";
 import { SourceService } from "./sources/service";
+import { CorrectionCenter } from "./review/corrections";
+import { SupabaseAuditReader } from "./review/supabase-audit-reader";
 import { SupabaseSourceStore } from "./sources/supabase-store";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
@@ -86,6 +88,7 @@ export interface AiServices {
   collaboration: CollaborationService;
   communication: CommunicationService;
   review: ReviewService;
+  corrections: CorrectionCenter;
   sources: SourceService;
   stageAnswers: StageAnswerService;
   audit: AuditSink;
@@ -119,7 +122,31 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const newId = () => crypto.randomUUID();
   const now = () => new Date();
   const approvals = new ApprovalService({ store, audit, now, newId });
-  const sources = new SourceService({ store: new SupabaseSourceStore(db), audit, now, newId });
+  const reviewStore = new SupabaseReviewStore(db);
+  const sources = new SourceService({
+    store: new SupabaseSourceStore(db),
+    audit,
+    now,
+    newId,
+    // A retired host comes back only through an approved source_reactivation item for this host and version.
+    approvals: {
+      requestReactivation: async (r) => (await openReview({
+        kind: "source_reactivation",
+        agent: null,
+        runId: null,
+        taskId: null,
+        leadId: null,
+        subjectRef: r.host,
+        summary: `Reactivation of ${r.host} (version ${r.version}) is requested.`,
+        evidence: { host: r.host, version: r.version, reason: r.reason },
+        payload: { host: r.host, version: r.version, reason: r.reason, requestedBy: r.requestedBy },
+      })).id,
+      isApproved: async (reviewId, host, version) => {
+        const item = await reviewStore.get(reviewId);
+        return !!item && item.kind === "source_reactivation" && item.status === "approved" && item.subjectRef === host && (item.payload as { version?: number }).version === version;
+      },
+    },
+  });
   const visaHosts = await sources.activeHosts();
   const platform = buildPlatform(
     { tasks: store, events: new SupabaseEventStore(db), context: new SupabaseContextStore(db), knowledge: new SupabaseKbStore(db), quality: new SupabaseQualityStore(db), audit },
@@ -238,9 +265,22 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     // A held answer waits in the approval center with its evidence.
     review: { open: (input) => openReview(input) },
   });
-  const review = createReviewCenter({ store: new SupabaseReviewStore(db), audit, now, newId, crm, communication, tasks: store, orchestrator });
+  const review = createReviewCenter({
+    store: reviewStore,
+    audit,
+    now,
+    newId,
+    crm,
+    communication,
+    tasks: store,
+    orchestrator,
+    registry: {
+      status: (host) => sources.status(host),
+      reactivate: (actor, host, version, reviewId, reason) => sources.reactivate(actor, host, version, reviewId, reason),
+    },
+  });
   reviewCenter = review;
   const stageAnswers = new StageAnswerService({ runtime, crm, audit, now, newId, review: { open: (input) => openReview(input) } });
   const businessReports = new BusinessReportService({ crm, campaigns, competitors, notify: (n) => notifications.notify(n), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, review, sources, stageAnswers, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, review, corrections: new CorrectionCenter(new SupabaseAuditReader(db)), sources, stageAnswers, audit, usage, providers: configs };
 }

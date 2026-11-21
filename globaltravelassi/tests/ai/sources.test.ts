@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeHost, checkExpiry, isUsable, revalidationDue, prioritize, SourceRuleError, checkCategory, checkJurisdiction } from "@/lib/ai/sources/rules";
-import { SourceService, SourceForbiddenError, SourceConflictError, SourceRemovedError, type SourceRecord } from "@/lib/ai/sources/service";
+import { SourceService, SourceForbiddenError, SourceConflictError, SourceRetiredError, type SourceRecord } from "@/lib/ai/sources/service";
 import { MemorySourceStore } from "@/lib/ai/sources/memory-store";
 import { MemoryAuditSink } from "@/lib/ai/audit";
 import { makeClock, makeIds, OWNER } from "./helpers";
@@ -113,7 +113,7 @@ describe("authorization", () => {
       await expect(svc.add(actor, addInput({ host: "other.gov.dz" }), REASON)).rejects.toBeInstanceOf(SourceForbiddenError);
       await expect(svc.edit(actor, row.host, row.version, { category: "other", jurisdiction: "all", purpose: "x y", expiresAt: null }, REASON)).rejects.toBeInstanceOf(SourceForbiddenError);
       await expect(svc.setStatus(actor, row.host, row.version, "disabled", REASON)).rejects.toBeInstanceOf(SourceForbiddenError);
-      await expect(svc.remove(actor, row.host, row.version, REASON)).rejects.toBeInstanceOf(SourceForbiddenError);
+      await expect(svc.retire(actor, row.host, row.version, REASON)).rejects.toBeInstanceOf(SourceForbiddenError);
     }
     expect((await svc.activeHosts())).toEqual([row.host]);
   });
@@ -182,15 +182,15 @@ describe("registry changes", () => {
     expect(JSON.stringify(audit.events.find((e) => e.type === "source.revalidated"))).not.toContain("verified");
   });
 
-  it("removes a host as a terminal status: the row stays, agents stop reading it, and nothing can change it again", async () => {
+  it("retires a host as a terminal status: the row stays, agents stop reading it, and an owner change is refused", async () => {
     const { svc, audit, store } = setup();
     const row = await svc.add(OWNER, addInput(), REASON);
-    await svc.remove(OWNER, row.host, row.version, "Not used any more");
+    await svc.retire(OWNER, row.host, row.version, "Not used any more");
     expect(await svc.activeHosts()).toEqual([]);
-    expect((await store.get(row.host))?.status).toBe("removed");
-    expect(audit.events.find((e) => e.type === "source.removed")!.meta.previous).toMatchObject({ category: "government" });
-    await expect(svc.setStatus(OWNER, row.host, row.version + 1, "active", REASON)).rejects.toBeInstanceOf(SourceRemovedError);
-    await expect(svc.remove(OWNER, row.host, row.version + 1, REASON)).rejects.toBeInstanceOf(SourceRemovedError);
+    expect((await store.get(row.host))?.status).toBe("retired");
+    expect(audit.events.find((e) => e.type === "source.retired")!.meta.previous).toMatchObject({ category: "government" });
+    await expect(svc.setStatus(OWNER, row.host, row.version + 1, "active", REASON)).rejects.toBeInstanceOf(SourceRetiredError);
+    await expect(svc.edit(OWNER, row.host, row.version + 1, { category: "other", jurisdiction: "all", purpose: "x y", expiresAt: null }, REASON)).rejects.toBeInstanceOf(SourceRetiredError);
   });
 
   it("agents' read returns usable hosts only, official first, and never who approved them", async () => {

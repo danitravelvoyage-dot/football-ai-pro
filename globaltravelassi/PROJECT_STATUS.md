@@ -559,3 +559,49 @@ Migration 0018 is still **NOT applied** and waits for owner review. Tests run on
 - Removed hosts cannot be re-added (the host is the primary key). Needs a decision.
 - Corrections have no screen yet. Several corrections on one item are allowed.
 - An effect that fails after a decision is recorded is not rolled back.
+
+## Phase 13.2: staging readiness and audit integrity (local)
+
+Migration 0018 is **NOT applied** anywhere. The staging run waits for owner approval. Production is forbidden for this work.
+
+### Supabase inspection (read only)
+- Project `globaltravelassi` (`feknppmxasoxmwplxvpa`): active, Postgres 17.12. Migration history empty. None of the `ai_*` tables exist. Base tables present, with rows (customer-shaped). **Not a staging target.**
+- Project `visa-ready-dz` (`pcreairqaqxistybmnnb`): inactive. Not inspected further.
+- No migration, query or write was executed against either project.
+
+### Source lifecycle
+- Statuses: `active`, `disabled`, `retired`. Removal is no longer a status (`removed` renamed to `retired`).
+- Retirement is terminal for owner edits. A retired host can only ask to come back.
+- Reactivation is a `source_reactivation` review item. Approving it runs `ai_reactivate_source` in the database. The function is owner-only and needs an approved item for this host and exact version. It runs once: the version moves on after use.
+- Host identity, approver and approval time are kept through retirement.
+
+### Audit integrity
+- `ai_audit_integrity_report()` (owner only, read only): 12 checks covering the append-only trigger on `ai_events`, the no-truncate trigger, the review and registry triggers, the client privileges on `ai_events`, review items and the registry, the removal of the broad policy, and the reactivation function.
+- Client roles no longer hold UPDATE, DELETE or TRUNCATE on `ai_events`. INSERT is kept.
+- A database owner can disable a trigger. The report shows it. Tested.
+
+### Corrections
+- `CorrectionCenter` reads correction events from the audit trail (append-only). Each row shows the original decision (status, decider, time, reason), the correction, who recorded it and when.
+- Page `/command-center/corrections`. Form to record a correction on the review page. Originals are never changed.
+
+### Manifest and plan
+- `scripts/migration-manifest.mjs` writes `docs/migrations/manifest.json`: SHA-256 for every migration and the 0018 rollback. A test fails if a file changes without the manifest being regenerated.
+- `docs/staging/execution-plan.md`: inspection results, gates, ordered migrations with checksums, backup, post-migration checks, rollback.
+
+### Tests added
+- `tests/ai/source-lifecycle.test.ts` (15): transitions, reasons, retirement, reactivation approvals, reuse, concurrency.
+- `tests/ai/correction-center.test.ts` (6): what is shown, ordering, authorization, append-only.
+- `tests/db/audit-integrity.test.ts` (9): report, disabled-trigger detection, append-only privileges, database audit rows.
+- `tests/db/migration-dependencies.test.ts` (9): order, 0010 dependency, 0018 applies without 0010 and reports the gap, checksums.
+- `tests/db/owner-approval.test.ts` extended: retirement, reactivation refusal, approved reactivation and replay refusal.
+- `tests/db/rollback-verification.test.ts` extended: reactivation and report functions removed, audit privileges closed.
+- `npm run verify`: passes. 1,102 tests, lint with zero warnings, typecheck, production build.
+
+### Remaining risks
+- Migration 0010 is still a proposal in the repository. The audit guarantees depend on it.
+- The database checks run on PGlite with stubbed auth. A staging run is needed to prove them on Postgres 17 with Supabase roles.
+- A database owner can disable a trigger, and the report only detects it after the fact.
+- No hash chain on `ai_events`: a privileged edit that also avoids the trigger would not be detected by content.
+- Operators can read the registry (kept from 13.1).
+- Corrections can be recorded more than once per item.
+- A host retired and then reactivated keeps its row. Re-adding a deleted-looking host is not possible (host is the key), which is intended.

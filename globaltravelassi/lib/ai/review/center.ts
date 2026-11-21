@@ -15,6 +15,16 @@ export interface ReviewCenterDeps {
   /** The engine's task state and owner retry. A revision request requeues the original task through `retryTask`. */
   tasks: { getTask(id: string): Promise<{ status: string } | null> };
   orchestrator: { retryTask(taskId: string, actor: Actor): Promise<void> };
+  /** The source registry. A reactivation is applied here, after the owner approves it. */
+  registry: {
+    status(host: string): Promise<{ status: string; version: number } | null>;
+    reactivate(actor: Actor, host: string, version: number, reviewId: string, reason: string): Promise<unknown>;
+  };
+}
+
+interface ReactivationPayload {
+  host: string;
+  version: number;
 }
 
 /** The fields a held answer keeps in its payload. */
@@ -65,6 +75,13 @@ export function createReviewCenter(deps: ReviewCenterDeps): ReviewService {
       },
       // A revision is refused, and not recorded, unless its task is still failed. This stops a second request from
       // queuing the same task twice.
+      source_reactivation: async (item, decision) => {
+        if (decision !== "approve") return;
+        const p = item.payload as unknown as ReactivationPayload;
+        const now = await deps.registry.status(p.host);
+        // The host must still be retired at the version the request named. Otherwise the approval is stale.
+        if (!now || now.status !== "retired" || now.version !== p.version) throw new Error("The source changed since the request.");
+      },
       rejected_proposal: async (item, decision) => {
         if (decision !== "request_revision") return;
         const p = item.payload as unknown as RejectedPayload;
@@ -90,6 +107,12 @@ export function createReviewCenter(deps: ReviewCenterDeps): ReviewService {
         const p = item.payload as unknown as RejectedPayload;
         await deps.orchestrator.retryTask(p.taskId, ownerOf(actor));
         return { requeued: true, taskId: p.taskId };
+      },
+      source_reactivation: async (item, decision, actor) => {
+        if (decision !== "approve") return { reactivated: false };
+        const p = item.payload as unknown as ReactivationPayload;
+        await deps.registry.reactivate(ownerOf(actor), p.host, p.version, item.id, item.decisionReason ?? "Reactivation approved");
+        return { reactivated: true, host: p.host };
       },
       escalated_claim: async () => ({ recorded: true }),
       crm_stage_disagreement: async () => ({ recorded: true }),
