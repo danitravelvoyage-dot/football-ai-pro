@@ -246,3 +246,20 @@ describe("owner removes unsubmitted proofs", () => {
     expect(state.finished).toEqual([{ id: "intent-1", removed: false }]);
   });
 });
+
+describe("owner reconciles open proof removals", () => {
+  it("reports how many open removals were resolved, through the database function only", async () => {
+    state.adminUser = USER;
+    state.rpcResult = { data: [{ removal_id: "a", outcome: "removed" }, { removal_id: "b", outcome: "failed" }], error: null };
+    const { reconcileOrphanRemovalsAction } = await import("@/lib/actions/payments");
+    expect(await reconcileOrphanRemovalsAction()).toEqual({ ok: true, code: "reconciled", id: "2" });
+    expect(state.rpcCalls.at(-1)?.fn).toBe("reconcile_orphan_removals");
+  });
+
+  it("a visitor who is not the owner cannot reconcile", async () => {
+    state.adminUser = null;
+    const { reconcileOrphanRemovalsAction } = await import("@/lib/actions/payments");
+    expect(await reconcileOrphanRemovalsAction()).toEqual({ ok: false, code: "unauthorized" });
+  });
+});
+

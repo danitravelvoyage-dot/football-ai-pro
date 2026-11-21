@@ -139,13 +139,17 @@ begin
       raise exception 'A new source starts at version 1.' using errcode = 'check_violation';
     end if;
   else
-    -- Retirement is terminal. The only way out is the approved reactivation function, which sets the flag below.
+    -- Retirement is terminal. The only way out is an approved reactivation: an approved review item for this host, bound
+    -- to this exact version. The check reads the decision itself. No session setting can satisfy it.
     -- A row is never deleted: retirement keeps the host, its history and its approver.
     if old.status = 'retired' and new.status is distinct from 'active' then
       raise exception 'A retired source cannot change. Only an approved reactivation can bring it back.' using errcode = 'check_violation';
     end if;
-    if old.status = 'retired' and new.status = 'active'
-       and coalesce(current_setting('gta.source_reactivation', true), '') is distinct from old.host then
+    if old.status = 'retired' and new.status = 'active' and not exists (
+         select 1 from public.ai_review_items r
+          where r.kind = 'source_reactivation' and r.status = 'approved'
+            and r.subject_ref = new.host and (r.payload ->> 'version')::int = old.version
+       ) then
       raise exception 'A retired source can be reactivated only through an approved reactivation.' using errcode = 'check_violation';
     end if;
     if new.host is distinct from old.host or new.approved_by is distinct from old.approved_by or new.approved_at is distinct from old.approved_at then
@@ -230,7 +234,6 @@ begin
   ) then
     raise exception 'No approved reactivation matches this source and version.' using errcode = 'check_violation';
   end if;
-  perform set_config('gta.source_reactivation', p_host, true);
   update public.ai_sources_allowlist
      set status = 'active', last_change_reason = p_reason
    where host = p_host and version = p_expected_version and status = 'retired';

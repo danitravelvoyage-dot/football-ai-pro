@@ -175,3 +175,37 @@ describe("source registry guard", () => {
     await expect(exec(`delete from public.ai_events where entity_id = 'owner-added.gov.dz'`)).rejects.toThrow(/append-only/);
   });
 });
+
+describe("reactivation needs an approved decision, not a session setting", () => {
+  const HOST = "guard-host.gov.dz";
+  const APPROVAL = "00000000-0000-0000-0000-0000000000f9";
+
+  it("a retired host cannot be re-activated by direct SQL, from the owner's session or the database owner's", async () => {
+    await asUser(db, ADMIN, `insert into public.ai_sources_allowlist (host, purpose, approved_by, last_change_reason) values ('${HOST}', 'Visa rules', '${ADMIN}', '${REASON}')`);
+    await asUser(db, ADMIN, `update public.ai_sources_allowlist set status = 'retired', last_change_reason = 'Moved' where host = '${HOST}'`);
+    await expect(asUser(db, ADMIN, `update public.ai_sources_allowlist set status = 'active', last_change_reason = 'Back' where host = '${HOST}'`)).rejects.toThrow(/approved reactivation/);
+    await expect(exec(`update public.ai_sources_allowlist set status = 'active', last_change_reason = 'Back' where host = '${HOST}'`)).rejects.toThrow(/approved reactivation/);
+  });
+
+  it("setting a session variable to the host's name does not authorize it", async () => {
+    await expect(asUser(db, ADMIN, `select set_config('gta.source_reactivation', '${HOST}', true)`)).resolves.toBeDefined();
+    await expect(asUser(db, ADMIN, `update public.ai_sources_allowlist set status = 'active', last_change_reason = 'Back' where host = '${HOST}'`)).rejects.toThrow(/approved reactivation/);
+  });
+
+  it("an approval for another version does not authorize the change", async () => {
+    await exec(`insert into public.ai_review_items (id, kind, subject_ref, summary, expires_at, status, decided_by, decided_at, decision_reason, version, payload)
+      values ('${APPROVAL}', 'source_reactivation', '${HOST}', 'Old approval', now() + interval '7 days', 'approved', '${ADMIN}', now(), 'Checked', 2,
+              '{"host": "${HOST}", "version": 99}')`);
+    await expect(exec(`update public.ai_sources_allowlist set status = 'active', last_change_reason = 'Back' where host = '${HOST}'`)).rejects.toThrow(/approved reactivation/);
+  });
+
+  it("with an approval for this host and this version, the change is allowed, and only once", async () => {
+    const current = (await db.query<{ version: number }>(`select version from public.ai_sources_allowlist where host = '${HOST}'`)).rows[0]!.version;
+    await exec(`insert into public.ai_review_items (id, kind, subject_ref, summary, expires_at, status, decided_by, decided_at, decision_reason, version, payload)
+      values ('00000000-0000-0000-0000-0000000000fa', 'source_reactivation', '${HOST}', 'Approval', now() + interval '7 days', 'approved', '${ADMIN}', now(), 'Checked again', 2,
+              '{"host": "${HOST}", "version": ${current}}')`);
+    await exec(`update public.ai_sources_allowlist set status = 'active', last_change_reason = 'Approved return' where host = '${HOST}'`);
+    const row = await db.query<{ status: string; version: number }>(`select status, version from public.ai_sources_allowlist where host = '${HOST}'`);
+    expect(row.rows[0]).toEqual({ status: "active", version: current + 1 });
+  });
+});

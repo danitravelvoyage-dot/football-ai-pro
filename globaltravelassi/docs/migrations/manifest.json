@@ -18,7 +18,7 @@
     "supabase/migrations/0015_crm_sales.sql": "daec756a3c5111b3863b4701c63d936f39103da398116d845939235bc1d5f8ed",
     "supabase/migrations/0016_competitor_intelligence.sql": "efe34c3651b09a08204224ac6a3b22cad9f9b93948fec4b466bdeb9af77c850a",
     "supabase/migrations/0017_collaboration.sql": "5f93e540a6363c8f2e9c6803db5b3fcc7272c3a560b4b66dadf21d5dffd69194",
-    "supabase/migrations/0018_owner_approval_center.sql": "86d5b8025c645e571fd6c742e5200cce2bfc84d7408bb308fe7594d796d7fa04",
+    "supabase/migrations/0018_owner_approval_center.sql": "66f720df7ee908b68ef3abb4a877b986ea7da827f5baffbc2603631bc6c69264",
     "supabase/migrations/0019_manual_payments.sql": "5d7bb91f078d68f7a624ccfa89dd1b80fff59dff39707f35e4f5cabd7d22f29d",
     "docs/migrations/0018_rollback.sql": "92a6f597a036938dead334a52e29f41d56a09c6d45bad7b29eb41487c91330bf",
     "docs/migrations/0019_rollback.sql": "9ad0cdeba26accedecedab7213ec0185ccd6a3f39e6b224f65648baa625a36a6"

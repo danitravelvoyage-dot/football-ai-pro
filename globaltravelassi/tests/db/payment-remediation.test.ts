@@ -267,3 +267,79 @@ describe("LOW: storage reference checks, definer rights, and direct cross-custom
     expect(rowsDef.every((r) => r.prosecdef === false)).toBe(true);
   });
 });
+
+describe("M5 review: customer_payments stays owner-run, and its isolation is tested", () => {
+  it("the view is not security_invoker: it runs with its owner's rights, which is why no customer row policy is needed", async () => {
+    const opts = await rows<{ reloptions: string[] | null }>(`select reloptions from pg_class where relname = 'customer_payments'`);
+    expect(opts[0]?.reloptions ?? []).not.toContain("security_invoker=true");
+  });
+
+  it("anonymous callers cannot read the view at all", async () => {
+    await expect(asUser(db, null, `select id from public.customer_payments`)).rejects.toThrow(/permission denied/);
+  });
+
+  it("the view cannot be written through: customers have no write path on it", async () => {
+    await expect(asUser(db, A, `update public.customer_payments set status = 'received'`)).rejects.toThrow(/cannot update|permission denied|not updatable/);
+    await expect(asUser(db, A, `delete from public.customer_payments`)).rejects.toThrow(/cannot delete|permission denied|not updatable/);
+  });
+
+  it("customer A sees only A's payments, and customer B sees only B's, in both directions", async () => {
+    const aRows = await asUser<{ application_id: string }>(db, A, `select application_id from public.customer_payments`);
+    const bRows = await asUser<{ application_id: string }>(db, B, `select application_id from public.customer_payments`);
+    expect(aRows.length).toBeGreaterThan(0);
+    expect(aRows.every((r) => r.application_id !== APP_B)).toBe(true);
+    expect(bRows.length).toBeGreaterThan(0);
+    expect(bRows.every((r) => r.application_id === APP_B)).toBe(true);
+  });
+
+  it("a customer cannot read another customer's rows by filtering on the other request's id", async () => {
+    expect(await asUser(db, A, `select id from public.customer_payments where application_id = '${APP_B}'`)).toEqual([]);
+    expect(await asUser(db, B, `select id from public.customer_payments where application_id = '${APP_A}'`)).toEqual([]);
+  });
+});
+
+describe("storage removal failure and reconciliation", () => {
+  const FILE = `${A}/${APP_CASH}/payment-retry.pdf`;
+
+  beforeAll(async () => {
+    await exec(`insert into storage.objects (bucket_id, name, created_at) values ('customer-documents', '${FILE}', now() - interval '30 days')`);
+  });
+
+  it("a removal whose storage call failed is recorded as failed with its reason, and is not counted as removed", async () => {
+    const intent = (await asUser<{ begin_orphan_removal: string }>(db, OWNER, `select public.begin_orphan_removal('${FILE}', 'Old proof, first try')`))[0]!.begin_orphan_removal;
+    const outcome = await asUser<{ finish_orphan_removal: string }>(db, OWNER, `select public.finish_orphan_removal('${intent}', false, 'storage unavailable')`);
+    expect(outcome[0]?.finish_orphan_removal).toBe("failed");
+    const row = await rows<{ status: string; detail: string }>(`select status, detail from public.proof_removals where id = '${intent}'`);
+    expect(row[0]).toEqual({ status: "failed", detail: "storage unavailable" });
+    expect(await count(`select 1 from public.payment_audit where action = 'orphan_purged' and application_id = '${APP_CASH}' and reason = 'Old proof, first try'`)).toBe(0);
+  });
+
+  it("a failed removal can be tried again: a new intent is allowed while the file is still eligible", async () => {
+    const retry = await asUser<{ begin_orphan_removal: string }>(db, OWNER, `select public.begin_orphan_removal('${FILE}', 'Second try after a failure')`);
+    expect(retry[0]?.begin_orphan_removal).toBeTruthy();
+    const open = await count(`select 1 from public.proof_removals where object_name = '${FILE}' and status = 'intent'`);
+    expect(open).toBe(1);
+  });
+
+  it("reconciliation of an interrupted run marks a file still present as failed, and a file already gone as removed", async () => {
+    const PRESENT = `${A}/${APP_CASH}/payment-interrupted-present.pdf`;
+    const GONE = `${A}/${APP_CASH}/payment-interrupted-gone.pdf`;
+    await exec(`insert into storage.objects (bucket_id, name, created_at) values ('customer-documents', '${PRESENT}', now() - interval '30 days')`);
+    // The state an interrupted run leaves: an intent older than the reconciliation window, whatever the storage holds.
+    await exec(`insert into public.proof_removals (object_name, application_id, actor_id, reason, status, requested_at) values
+      ('${PRESENT}', '${APP_CASH}', '${OWNER}', 'Interrupted run', 'intent', now() - interval '3 hours'),
+      ('${GONE}', '${APP_CASH}', '${OWNER}', 'Interrupted run', 'intent', now() - interval '3 hours')`);
+    const out = await asUser<{ removal_id: string; outcome: string }>(db, OWNER, `select removal_id, outcome from public.reconcile_orphan_removals()`);
+    const byName = Object.fromEntries((await rows<{ id: string; object_name: string }>(`select id, object_name from public.proof_removals where object_name in ('${PRESENT}', '${GONE}')`)).map((r) => [r.object_name, r.id]));
+    expect(out.find((r) => r.removal_id === byName[PRESENT])?.outcome).toBe("failed");
+    expect(out.find((r) => r.removal_id === byName[GONE])?.outcome).toBe("removed");
+    const states = await rows<{ object_name: string; status: string }>(`select object_name, status from public.proof_removals where object_name in ('${PRESENT}', '${GONE}')`);
+    expect(Object.fromEntries(states.map((x) => [x.object_name, x.status]))).toEqual({ [PRESENT]: "failed", [GONE]: "removed" });
+    // The file from the failed attempt above is younger than the window, so reconciliation leaves it alone.
+    expect(await count(`select 1 from public.proof_removals where object_name = '${FILE}' and status = 'intent'`)).toBe(1);
+  });
+
+  it("reconciliation is owner only", async () => {
+    await expect(asUser(db, A, `select * from public.reconcile_orphan_removals()`)).rejects.toThrow(/Only the owner/);
+  });
+});

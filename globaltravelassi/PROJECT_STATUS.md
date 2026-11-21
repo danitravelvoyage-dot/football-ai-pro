@@ -686,3 +686,44 @@ Migration `0019_manual_payments.sql` is **NOT applied**. It was reviewed and ame
 - Proof removal through the storage API has not been run against a real project. The eligibility rules are tested on PGlite only.
 - Deleting an application that has a payment is refused (the payment is kept). The existing admin action ignores the payment-deletion error, so the owner may see a generic failure.
 - A proof that is uploaded and never submitted stays in storage until the owner runs the removal after seven days.
+
+## Payment security remediation (local commit, verified in this pass)
+
+Baseline: `475a116`. Remediation work committed locally. Nothing pushed. Migration 0019 and 0018 are **NOT applied** to any database. Production and the live Supabase project were not touched.
+
+### Findings
+
+| # | Finding | Status | Evidence |
+| --- | --- | --- | --- |
+| H1 | Request deletion removed documents before a refusal | FIXED | `delete_application_request` checks protected records in one transaction before anything is removed; the action removes files only after the database deletes; storage failures are reported. Regression tests in `tests/actions/admin-payments-actions.test.ts` and `tests/db/payment-remediation.test.ts`. |
+| H2 | No rollback for migration 0019 | FIXED | `docs/migrations/0019_rollback.sql`: archive first, checksum verified, refused while proofs or 0019 states exist, one transaction. Tested on disposable PGlite (refusal, archive, restore, recovery, second rollback refused): `tests/db/rollback-0019.test.ts`. |
+| M1 | Direct client writes and bypass paths on payments | FIXED | Client roles have no insert, update or delete on `payments`; owner writes go through functions verified with `is_admin()`; insert guard refuses decided payments; the session flag is no longer used for authorization. Tested: direct SQL, RPC, and flag bypass attempts. |
+| M2 | Race between proof submission and removal | FIXED | Per-file advisory lock shared by submission and removal, plus an open-intent check. Verified on a real PostgreSQL 16.15 server with two live sessions in each scenario: `scripts/pg-concurrency-check.sh`, evidence in `docs/staging/concurrency-evidence.md`. |
+| M3 | Removal not recorded before storage; reconciliation missing | FIXED | Intent recorded first; result recorded afterwards and "removed" only after the file is confirmed gone; a failed removal is recorded as failed and can be retried; `reconcile_orphan_removals` resolves interrupted runs. Tested: DB and action level, including storage failure. |
+| M4 | Customer timeline exposed internal actor IDs | FIXED | `customer_application_events` view without `actor_id`; base table owner-only. Cross-customer isolation tested. |
+| M5 | `customer_payments` is a view that runs with its owner's rights | FIXED WITH JUSTIFICATION (kept) | Kept because a customer-level grant can't be combined with the owner's full-row access without weakening RLS. The view filters on `auth.uid()`, anon has no access, the view can't be written through, and isolation is tested in both directions. Tests: `tests/db/payment-remediation.test.ts` (M5 block). |
+| M6 (found in this pass) | Migration 0018: reactivation authorized by a session setting (`gta.source_reactivation`) | FIXED | The flag is removed. The guard now allows retired to active only when an approved `source_reactivation` review item exists for that host and its exact current version. Tested: direct SQL from owner and superuser, session variable, wrong-version approval, and a single successful use: `tests/db/owner-approval.test.ts`. |
+| Low | Storage failures not reported | FIXED | Each failed removal is recorded with its detail and counted; the owner sees the failed count. |
+| Low | Cross-customer isolation only tested indirectly | FIXED | Direct tests between two customers with payments and events. |
+| Low | `proof_is_referenced` callable by any signed-in user | FIXED | It answers only for the caller's own folder, or for the owner. |
+| Low | Unneeded `SECURITY DEFINER` on trigger functions | FIXED | Trigger functions run with caller rights; tested through `pg_proc`. The remaining definer functions each need owner or storage rights. |
+
+### Verification
+
+- `npm run verify` on this commit: see the commit message and the run recorded in the final report.
+- Database suites on PGlite: all passing, including the migration chain.
+- Real PostgreSQL 16.15 (local, throwaway cluster under a non-root account, not production): migrations 0001 to 0019 applied in order with error stopping; concurrency check 9 of 9 passed.
+
+### Remaining risks
+
+- The concurrency check runs on one local server without Supabase roles. A staging run on Supabase is still needed.
+- Storage removal has been exercised through a recorder and the database, not against a real Supabase bucket.
+- The database owner can disable triggers; the integrity report does not yet cover the payment guards.
+- The single owner approves their own reactivation requests. That is one decision in the approval center, not a second person's approval.
+- `customer_payments` relies on the view owner (the migration role) bypassing RLS, which holds on Supabase's postgres-owned objects but must be confirmed on staging.
+- Application deletion can still report a storage failure after the request is gone; the owner is told how many files may remain.
+- Migration 0010 (append-only audit) is still a proposal; the audit guarantees for `ai_events` depend on it.
+
+### Staging decision
+
+**NO-GO for a staging run.** The local evidence is good, but the remaining gates are not passed: the owner has not approved a staging project or any migration run; no backup of a real project has been taken; and the Supabase-specific checks (view ownership, storage removal, roles) have not been run. Local checks are complete; the staging gates are not.

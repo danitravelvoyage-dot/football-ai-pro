@@ -20,6 +20,13 @@ What this shows:
 
 ## 2. Gates (none of these is passed yet)
 
+Status of the evidence before the gates:
+- Local PostgreSQL 16 run of migrations 0001 to 0019 in order: passed (see `docs/staging/concurrency-evidence.md`).
+- Local concurrency check on the same server: 9 of 9 checks passed.
+- `npm run verify` on the repository: see PROJECT_STATUS.md for the run that matches this commit.
+- Not done: any run on Supabase, any staging project, any backup taken from a real project.
+
+
 1. Owner reviews migration 0018, the rollback script and this plan.
 2. Owner approves creating a separate staging project.
 3. Owner approves the backup of the staging project before the first run (an empty staging project needs no data backup, but the schema backup is still taken).
@@ -50,10 +57,15 @@ Each file must match the checksum in `docs/migrations/manifest.json` before it i
 | 15 | `0015_crm_sales.sql` | `daec756a3c5111b3…` |
 | 16 | `0016_competitor_intelligence.sql` | `efe34c3651b09a08…` |
 | 17 | `0017_collaboration.sql` | `5f93e540a6363c8f…` |
-| 18 | `0018_owner_approval_center.sql` | `86d5b8025c645e57…` |
-| 19 | `0019_manual_payments.sql` | `8b25caaaa1e350b3…` |
+| 18 | `0018_owner_approval_center.sql` | `66f720df7ee908b6…` |
+| 19 | `0019_manual_payments.sql` | `5d7bb91f078d68f7…` |
 
-The rollback script is `docs/migrations/0018_rollback.sql` (SHA-256 `92a6f597a036938d…`). It is not part of the chain.
+Rollback scripts (not part of the chain):
+
+- `docs/migrations/0018_rollback.sql` (SHA-256 `92a6f597a036938d…`)
+- `docs/migrations/0019_rollback.sql` (SHA-256 `9ad0cdeba26acced…`)
+
+Full checksum list: `docs/migrations/manifest.json`. The manifest test fails if any listed file changes without a regenerated manifest.
 
 ## 4. Pre-migration backup and checksum check
 
@@ -93,7 +105,11 @@ Also check that the chain's last migration is 0018 and that no table outside `pu
 
 ## 7. Rollback
 
-Only if the owner asks, and only after the archive procedure in `docs/migrations/0018_backup_procedure.md`. The rollback runs in one transaction, copies the review items and registry metadata first, and checks the copies. It keeps the audit history and the host rows.
+Only if the owner asks, and only after the archive procedure in `docs/migrations/0018_backup_procedure.md`.
+
+- `0019_rollback.sql` archives the payments, audit, settings, history and proof-removal tables first, checks the copies, and then restores the 0001 rules. It refuses, with nothing changed, while any proof, any pending or rejected payment, any 0019 method, or any request awaiting payment exists. The owner decides those first.
+- `0018_rollback.sql` archives the review items and registry metadata first, and checks the copies.
+- Both run in one transaction and keep the audit history and the host and payment rows. Neither touches storage objects.
 
 ## 8. What this plan does not cover
 
