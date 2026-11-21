@@ -131,9 +131,10 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const collaborationStore = new SupabaseCollaborationStore(db);
   // The review center is built last, but CRM and communication open items in it. They reach it through this reference.
   let reviewCenter: ReviewService | null = null;
-  const openReview = (input: ReviewOpenInput) => {
+  const openReview = async (input: ReviewOpenInput) => {
     if (!reviewCenter) throw new Error("The approval center is not ready.");
-    return reviewCenter.open(input);
+    // A repeated request for the same decision returns the open item, so nothing is queued twice.
+    return (await reviewCenter.openOnce(input)).item;
   };
   const orchestrator = new Orchestrator({
     store,

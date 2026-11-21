@@ -63,6 +63,25 @@ drop trigger if exists ai_review_items_guard on public.ai_review_items;
 create trigger ai_review_items_guard before update on public.ai_review_items
   for each row execute function public.ai_review_item_guard();
 
+-- Every decision is written to the append-only audit table by the database too, so a client cannot skip it.
+create or replace function public.ai_review_audit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.ai_events (actor, event_type, entity_type, entity_id, meta)
+  values (
+    'db:' || coalesce(auth.uid()::text, 'no-session'),
+    'db.review.decided',
+    'review_item',
+    new.id::text,
+    jsonb_build_object('kind', new.kind, 'previous_status', old.status, 'new_status', new.status, 'version', new.version, 'decided_by', new.decided_by)
+  );
+  return new;
+end $$;
+
+drop trigger if exists ai_review_items_audit on public.ai_review_items;
+create trigger ai_review_items_audit after update on public.ai_review_items
+  for each row execute function public.ai_review_audit();
+
 alter table public.ai_review_items enable row level security;
 drop policy if exists ai_review_items_read on public.ai_review_items;
 create policy ai_review_items_read on public.ai_review_items for select to authenticated using (public.is_admin());
@@ -92,28 +111,93 @@ drop trigger if exists ai_leads_version on public.ai_leads;
 create trigger ai_leads_version before update on public.ai_leads
   for each row execute function public.ai_lead_version_bump();
 
--- ---------- 3. Source registry: the existing host list gains its metadata ----------------------
+-- ---------- 3. Source registry: owner-only writes, a reason on every change, no delete, audited ----------------
 
 alter table public.ai_sources_allowlist add column if not exists category text not null default 'other'
   check (category in ('government', 'immigration', 'official_other', 'other'));
 alter table public.ai_sources_allowlist add column if not exists jurisdiction text not null default 'all'
   check (jurisdiction in ('dz', 'ma', 'tn', 'fr', 'all'));
-alter table public.ai_sources_allowlist add column if not exists status text not null default 'active'
-  check (status in ('active', 'disabled'));
+alter table public.ai_sources_allowlist add column if not exists status text not null default 'active';
+alter table public.ai_sources_allowlist drop constraint if exists ai_sources_allowlist_status_check;
+alter table public.ai_sources_allowlist add constraint ai_sources_allowlist_status_check check (status in ('active', 'disabled', 'removed'));
 alter table public.ai_sources_allowlist add column if not exists expires_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists validated_at timestamptz;
 alter table public.ai_sources_allowlist add column if not exists updated_at timestamptz not null default now();
 alter table public.ai_sources_allowlist add column if not exists version int not null default 1 check (version >= 1);
+alter table public.ai_sources_allowlist add column if not exists last_change_reason text
+  check (last_change_reason is null or char_length(last_change_reason) between 3 and 500);
 
--- Every change to a registry row bumps its version; a change that names an old version matches nothing.
-create or replace function public.ai_source_version_bump()
-returns trigger language plpgsql set search_path = public as $$
+-- Replaces the version-only trigger of the first draft. One guard decides every write to a source row.
+drop trigger if exists ai_sources_allowlist_version on public.ai_sources_allowlist;
+drop function if exists public.ai_source_version_bump();
+
+create or replace function public.ai_source_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  new.version := old.version + 1;
-  new.updated_at := now();
+  if tg_op = 'INSERT' then
+    if new.version <> 1 then
+      raise exception 'A new source starts at version 1.' using errcode = 'check_violation';
+    end if;
+  else
+    -- Removal is a terminal status, not a row delete. The row, its history and its approver stay.
+    if old.status = 'removed' then
+      raise exception 'A removed source cannot change.' using errcode = 'check_violation';
+    end if;
+    if new.host is distinct from old.host or new.approved_by is distinct from old.approved_by or new.approved_at is distinct from old.approved_at then
+      raise exception 'The host and the approver of a source cannot change.' using errcode = 'check_violation';
+    end if;
+    -- Each change carries its own reason: a stored reason from an earlier change does not count.
+    if new.last_change_reason is not distinct from old.last_change_reason then
+      raise exception 'Every source change needs its own reason. Give the reason for this change.' using errcode = 'check_violation';
+    end if;
+    new.version := old.version + 1;
+    new.updated_at := now();
+  end if;
+  -- Every change, from every path, says why. The reason is kept on the row and written to the audit trail.
+  if new.last_change_reason is null or char_length(new.last_change_reason) < 3 then
+    raise exception 'Every source change needs a reason of 3 to 500 characters.' using errcode = 'check_violation';
+  end if;
   return new;
 end $$;
 
-drop trigger if exists ai_sources_allowlist_version on public.ai_sources_allowlist;
-create trigger ai_sources_allowlist_version before update on public.ai_sources_allowlist
-  for each row execute function public.ai_source_version_bump();
+drop trigger if exists ai_sources_allowlist_guard on public.ai_sources_allowlist;
+create trigger ai_sources_allowlist_guard before insert or update on public.ai_sources_allowlist
+  for each row execute function public.ai_source_guard();
+
+create or replace function public.ai_source_audit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.ai_events (actor, event_type, entity_type, entity_id, meta)
+  values (
+    'db:' || coalesce(auth.uid()::text, 'no-session'),
+    case
+      when tg_op = 'INSERT' then 'db.source.added'
+      when new.status = 'removed' then 'db.source.removed'
+      else 'db.source.changed'
+    end,
+    'ai_source',
+    new.host,
+    jsonb_build_object(
+      'version', new.version,
+      'status', new.status,
+      'previous_status', case when tg_op = 'UPDATE' then old.status end,
+      'previous_version', case when tg_op = 'UPDATE' then old.version end,
+      'reason', new.last_change_reason
+    )
+  );
+  return new;
+end $$;
+
+drop trigger if exists ai_sources_allowlist_audit on public.ai_sources_allowlist;
+create trigger ai_sources_allowlist_audit after insert or update on public.ai_sources_allowlist
+  for each row execute function public.ai_source_audit();
+
+-- Owner-only writes. The broad "for all" policy from 0002 is replaced: no client role can delete a source.
+drop policy if exists ai_sources_admin on public.ai_sources_allowlist;
+drop policy if exists ai_sources_read on public.ai_sources_allowlist;
+create policy ai_sources_read on public.ai_sources_allowlist for select to authenticated using (public.is_admin_or_operator());
+drop policy if exists ai_sources_owner_insert on public.ai_sources_allowlist;
+create policy ai_sources_owner_insert on public.ai_sources_allowlist for insert to authenticated with check (public.is_admin());
+drop policy if exists ai_sources_owner_update on public.ai_sources_allowlist;
+create policy ai_sources_owner_update on public.ai_sources_allowlist for update to authenticated using (public.is_admin()) with check (public.is_admin());
+revoke delete, truncate on public.ai_sources_allowlist from anon, authenticated;

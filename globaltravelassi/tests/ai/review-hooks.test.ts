@@ -226,3 +226,31 @@ describe("held answers are delivered exactly once", () => {
     expect(delivered).toEqual(["q-9"]);
   });
 });
+
+describe("a revision keeps the original context and runs the task once per attempt", () => {
+  it("keeps the inputs, step, agent and run, keeps the earlier quality reviews as they were, and runs the task exactly as many times as the first pass", async () => {
+    const w = await rejectedWorkflow();
+    const runsOf = async () => (await w.store.listAgentRuns(1000)).filter((r) => r.taskId === w.research.id).length;
+    const firstPassRuns = await runsOf();
+    const reviewsBefore = await w.quality.history({ kind: "system" }, w.research.id);
+    const taskBefore = (await w.store.getTask(w.research.id))!;
+
+    const [item] = await w.reviewStore.list({ kind: "rejected_proposal", limit: 10 });
+    await w.center.decide(OWNER, item!.id, "request_revision", REASON, item!.version);
+
+    const requeued = (await w.store.getTask(w.research.id))!;
+    expect(requeued).toMatchObject({ status: "ready", attempts: 0, agent: taskBefore.agent, runId: taskBefore.runId, stepKey: taskBefore.stepKey });
+    expect(requeued.input).toEqual(taskBefore.input);
+
+    for (let i = 0; i < 40; i++) {
+      const report = await w.orch.tick({ limit: 10 });
+      if (report.claimed === 0) break;
+    }
+
+    expect(await runsOf()).toBe(firstPassRuns * 2);
+    const reviewsAfter = await w.quality.history({ kind: "system" }, w.research.id);
+    expect(reviewsAfter.slice(0, reviewsBefore.length)).toEqual(reviewsBefore);
+    expect((await w.store.getTask(w.research.id))!.status).toBe("failed");
+    expect(w.audit.events.filter((e) => e.type === "task.retry_requested")).toHaveLength(1);
+  });
+});

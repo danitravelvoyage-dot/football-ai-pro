@@ -466,6 +466,7 @@ export const ar: Dict = {
       statusLabels: {
         active: "فعّال",
         disabled: "معطّل",
+        removed: "مُزال",
       },
       msg: {
         saved: "تم الحفظ.",

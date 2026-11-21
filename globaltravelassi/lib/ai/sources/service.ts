@@ -29,6 +29,13 @@ export class SourceNotFoundError extends Error {
   }
 }
 
+export class SourceRemovedError extends Error {
+  constructor() {
+    super("This host was removed. A removed host cannot change.");
+    this.name = "SourceRemovedError";
+  }
+}
+
 export class SourceConflictError extends Error {
   constructor() {
     super("This source changed since you opened it. Reload and try again.");
@@ -49,6 +56,8 @@ export interface SourceRecord {
   approvedBy: string | null;
   approvedAt: string;
   updatedAt: string;
+  /** The reason given for the latest change. The database refuses a change without one. */
+  lastChangeReason: string | null;
 }
 
 export interface SourceStore {
@@ -57,7 +66,6 @@ export interface SourceStore {
   insert(row: SourceRecord): Promise<void>;
   /** Replaces the row only if its version is still `expectedVersion`. Returns false when another change got there first. */
   update(host: string, expectedVersion: number, next: SourceRecord): Promise<boolean>;
-  delete(host: string): Promise<void>;
 }
 
 export interface SourceServiceDeps {
@@ -127,9 +135,10 @@ export class SourceService {
       approvedBy: by,
       approvedAt: now,
       updatedAt: now,
+      lastChangeReason: reasonOf(reason),
     };
     await this.deps.store.insert(row);
-    await this.audit(by, "source.added", host, null, row, reasonOf(reason));
+    await this.audit(by, "source.added", host, null, row, row.lastChangeReason!);
     return row;
   }
 
@@ -138,8 +147,10 @@ export class SourceService {
     const now = this.nowIso();
     const before = await this.require(host);
     if (before.version !== expectedVersion) throw new SourceConflictError();
+    if (before.status === "removed") throw new SourceRemovedError();
     const next: SourceRecord = {
       ...before,
+      lastChangeReason: reasonOf(reason),
       category: checkCategory(input.category),
       jurisdiction: checkJurisdiction(input.jurisdiction),
       purpose: checkPurpose(input.purpose),
@@ -148,7 +159,7 @@ export class SourceService {
       updatedAt: now,
     };
     await this.write(before, next, expectedVersion);
-    await this.audit(by, "source.updated", before.host, before, next, reasonOf(reason));
+    await this.audit(by, "source.updated", before.host, before, next, next.lastChangeReason!);
     return next;
   }
 
@@ -156,9 +167,10 @@ export class SourceService {
     const by = owner(actor);
     const before = await this.require(host);
     if (before.version !== expectedVersion) throw new SourceConflictError();
-    const next: SourceRecord = { ...before, status, version: before.version + 1, updatedAt: this.nowIso() };
+    if (before.status === "removed") throw new SourceRemovedError();
+    const next: SourceRecord = { ...before, status, version: before.version + 1, updatedAt: this.nowIso(), lastChangeReason: reasonOf(reason) };
     await this.write(before, next, expectedVersion);
-    await this.audit(by, status === "disabled" ? "source.disabled" : "source.enabled", before.host, before, next, reasonOf(reason));
+    await this.audit(by, status === "disabled" ? "source.disabled" : "source.enabled", before.host, before, next, next.lastChangeReason!);
     return next;
   }
 
@@ -168,18 +180,22 @@ export class SourceService {
     const now = this.nowIso();
     const before = await this.require(host);
     if (before.version !== expectedVersion) throw new SourceConflictError();
-    const next: SourceRecord = { ...before, validatedAt: now, version: before.version + 1, updatedAt: now };
+    if (before.status === "removed") throw new SourceRemovedError();
+    const next: SourceRecord = { ...before, validatedAt: now, version: before.version + 1, updatedAt: now, lastChangeReason: reasonOf(reason) };
     await this.write(before, next, expectedVersion);
-    await this.audit(by, "source.revalidated", before.host, before, next, reasonOf(reason));
+    await this.audit(by, "source.revalidated", before.host, before, next, next.lastChangeReason!);
     return next;
   }
 
+  /** Removal is a terminal status change. The row, its history and its approver are kept; agents stop reading it. */
   async remove(actor: Actor, host: string, expectedVersion: number, reason: string): Promise<void> {
     const by = owner(actor);
     const before = await this.require(host);
     if (before.version !== expectedVersion) throw new SourceConflictError();
-    await this.deps.store.delete(before.host);
-    await this.audit(by, "source.removed", before.host, before, null, reasonOf(reason));
+    if (before.status === "removed") throw new SourceRemovedError();
+    const next: SourceRecord = { ...before, status: "removed", version: before.version + 1, updatedAt: this.nowIso(), lastChangeReason: reasonOf(reason) };
+    await this.write(before, next, expectedVersion);
+    await this.audit(by, "source.removed", before.host, before, next, next.lastChangeReason!);
   }
 
   private async require(host: string): Promise<SourceRecord> {

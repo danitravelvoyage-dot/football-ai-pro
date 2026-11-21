@@ -464,6 +464,7 @@ export const en = {
       statusLabels: {
         active: "Active",
         disabled: "Disabled",
+        removed: "Removed",
       },
       msg: {
         saved: "Saved.",

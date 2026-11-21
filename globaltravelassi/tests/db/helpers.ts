@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(__dirname, "../..");
@@ -29,4 +29,13 @@ export async function asUser<T = Record<string, unknown>>(
     await db.exec("reset role");
     await db.exec("reset request.jwt.claim.sub");
   }
+}
+
+/** Applies every migration after 0001 up to and including `last` (for example "0018"), in order, as production would. */
+export async function applyMigrationsThrough(db: PGlite, last: string): Promise<void> {
+  const dir = resolve(root, "supabase/migrations");
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".sql") && f > "0001_" && f.slice(0, 4) <= last)
+    .sort();
+  for (const f of files) await db.exec(readFileSync(resolve(dir, f), "utf8"));
 }

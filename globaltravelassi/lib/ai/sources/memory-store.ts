@@ -24,8 +24,4 @@ export class MemorySourceStore implements SourceStore {
     this.rows.set(host, { ...next });
     return true;
   }
-
-  async delete(host: string): Promise<void> {
-    this.rows.delete(host);
-  }
 }

@@ -519,3 +519,43 @@ Status: built and verified locally. Migration 0018 is **still NOT applied**: it 
 - Server actions have no automated test in this environment; owner checks in them use the existing `ownerId()` (profile role admin, active) and the services enforce owner-only independently.
 - `escalated_claim` remains visible through the existing approvals only.
 - Registry expiry is end-of-day UTC.
+
+## Phase 13.1: approval security hardening (local)
+
+Migration 0018 is still **NOT applied** and waits for owner review. Tests run on PGlite only, never on a real Supabase project.
+
+### Security fixes
+- Source registry: the broad `for all` policy from 0002 is replaced. Owner-only insert and update, operator and admin read, no client delete for any role.
+- Removal is a terminal status. Rows are never deleted.
+- Every source change needs its own reason. The database checks this on each write, and the reason is stored on the row.
+- Approver and host of a source cannot change. Database audit rows (`db.source.*`, `db.review.decided`) are written by triggers, alongside the application audit.
+- Operators can read the registry (previously they could not, which left scheduled visa research without approved hosts). They cannot write it.
+
+### Rollback
+- `docs/migrations/0018_rollback.sql` copies review items and source metadata into archive tables, checks the copies with checksums, and only then drops anything. It needs `gta.rollback_confirmed = 'yes'`, refuses to overwrite an earlier archive, and runs in one transaction.
+- Destructive steps: review items leave the live schema (archived), registry metadata columns are removed (archived), `ai_leads.version` is removed. Audit history and host rows are untouched.
+- `docs/migrations/0018_backup_procedure.md`: fingerprints, export, verification in a disposable database, rollback, post-check.
+
+### Audit recovery
+- `recordCorrection`: a correction is a new audit entry that quotes the original decision (status, decider, time, reason) and the owner's correction reason. The item and its decision never change. Nothing is reversed automatically.
+
+### Duplicate prevention
+- `openOnce`: a repeated request for the same kind, subject and payload returns the open item. Applies to CRM reopens, held answers, rejected outputs and stage disagreements.
+
+### Tests added
+- `tests/db/owner-approval.test.ts` and `rollback-verification.test.ts` (23, PGlite, full migration chain through 0018)
+- `tests/ai/approval-matrix.test.ts` (16): every review kind, every decision, every actor
+- `tests/ai/approval-security.test.ts` (8): corrections, duplicate prevention
+- `tests/actions/approval-actions.test.ts` (20): server actions for review, sources and CRM transitions, with owner check, denial, duplicates, concurrency
+- `tests/ai/review-hooks.test.ts` (12): requeue, context preservation, single execution per attempt
+
+`npm run verify` passes: 1,056 tests, lint with zero warnings, typecheck, production build.
+
+### Remaining risks
+- Everything database-side was tested on PGlite with stubbed auth. Real Supabase behaviour is not proven until a staging run.
+- Migration 0010 (append-only hardening) is still a proposal. The database audit triggers rely on `ai_events` being append-only, and that is only enforced once 0010 is applied.
+- The real `ownerId()` check (profile role) is not exercised by the action tests, which mock it.
+- A database owner can disable a trigger. Fingerprints and archives detect it after the fact.
+- Removed hosts cannot be re-added (the host is the primary key). Needs a decision.
+- Corrections have no screen yet. Several corrections on one item are allowed.
+- An effect that fails after a decision is recorded is not rolled back.

@@ -17,6 +17,7 @@ const fromRow = (r: Row): SourceRecord => ({
   approvedBy: (r.approved_by as string | null) ?? null,
   approvedAt: r.approved_at as string,
   updatedAt: r.updated_at as string,
+  lastChangeReason: (r.last_change_reason as string | null) ?? null,
 });
 
 const toRow = (s: SourceRecord): Row => ({
@@ -31,6 +32,7 @@ const toRow = (s: SourceRecord): Row => ({
   approved_at: s.approvedAt,
   updated_at: s.updatedAt,
   version: s.version,
+  last_change_reason: s.lastChangeReason,
 });
 
 /** Source registry on Supabase, through the owner's session. RLS (admin only) applies to every statement. */
@@ -70,10 +72,5 @@ export class SupabaseSourceStore implements SourceStore {
       .select("host");
     if (error) throw new Error(`Source registry error: ${error.message.slice(0, 160)}`);
     return (data ?? []).length === 1;
-  }
-
-  async delete(host: string): Promise<void> {
-    const { error } = await this.db.from("ai_sources_allowlist").delete().eq("host", host);
-    if (error) throw new Error(`Source registry error: ${error.message.slice(0, 160)}`);
   }
 }

@@ -9,7 +9,8 @@ export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
 export const JURISDICTIONS = ["dz", "ma", "tn", "fr", "all"] as const;
 export type Jurisdiction = (typeof JURISDICTIONS)[number];
 
-export const SOURCE_STATUSES = ["active", "disabled"] as const;
+/** Removed is terminal: the row and its history stay, and agents never read it. */
+export const SOURCE_STATUSES = ["active", "disabled", "removed"] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
 
 /** Lower rank is preferred. Official government sources come before anything else when several answer a question. */

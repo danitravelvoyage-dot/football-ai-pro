@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeHost, checkExpiry, isUsable, revalidationDue, prioritize, SourceRuleError, checkCategory, checkJurisdiction } from "@/lib/ai/sources/rules";
-import { SourceService, SourceForbiddenError, SourceConflictError, SourceNotFoundError, type SourceRecord } from "@/lib/ai/sources/service";
+import { SourceService, SourceForbiddenError, SourceConflictError, SourceRemovedError, type SourceRecord } from "@/lib/ai/sources/service";
 import { MemorySourceStore } from "@/lib/ai/sources/memory-store";
 import { MemoryAuditSink } from "@/lib/ai/audit";
 import { makeClock, makeIds, OWNER } from "./helpers";
@@ -57,6 +57,7 @@ const facts = (over: Partial<SourceRecord> = {}): SourceRecord => ({
   approvedBy: OWNER.id,
   approvedAt: NOW,
   updatedAt: NOW,
+  lastChangeReason: null,
   ...over,
 });
 
@@ -181,13 +182,15 @@ describe("registry changes", () => {
     expect(JSON.stringify(audit.events.find((e) => e.type === "source.revalidated"))).not.toContain("verified");
   });
 
-  it("removes a host, audits the removed values, and refuses to act on a host that is gone", async () => {
-    const { svc, audit } = setup();
+  it("removes a host as a terminal status: the row stays, agents stop reading it, and nothing can change it again", async () => {
+    const { svc, audit, store } = setup();
     const row = await svc.add(OWNER, addInput(), REASON);
     await svc.remove(OWNER, row.host, row.version, "Not used any more");
     expect(await svc.activeHosts()).toEqual([]);
+    expect((await store.get(row.host))?.status).toBe("removed");
     expect(audit.events.find((e) => e.type === "source.removed")!.meta.previous).toMatchObject({ category: "government" });
-    await expect(svc.setStatus(OWNER, row.host, row.version, "disabled", REASON)).rejects.toBeInstanceOf(SourceNotFoundError);
+    await expect(svc.setStatus(OWNER, row.host, row.version + 1, "active", REASON)).rejects.toBeInstanceOf(SourceRemovedError);
+    await expect(svc.remove(OWNER, row.host, row.version + 1, REASON)).rejects.toBeInstanceOf(SourceRemovedError);
   });
 
   it("agents' read returns usable hosts only, official first, and never who approved them", async () => {

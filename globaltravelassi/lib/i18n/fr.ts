@@ -466,6 +466,7 @@ export const fr: Dict = {
       statusLabels: {
         active: "Actif",
         disabled: "Désactivé",
+        removed: "Retiré",
       },
       msg: {
         saved: "Enregistré.",

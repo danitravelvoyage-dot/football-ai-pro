@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAiServices } from "@/lib/ai/services";
-import { SourceConflictError, SourceForbiddenError, SourceNotFoundError } from "@/lib/ai/sources/service";
+import { SourceConflictError, SourceForbiddenError, SourceNotFoundError, SourceRemovedError } from "@/lib/ai/sources/service";
 import { SourceRuleError, SOURCE_CATEGORIES, JURISDICTIONS } from "@/lib/ai/sources/rules";
 import { ownerId } from "./ai";
 import { formObject, localeFrom } from "./helpers";
@@ -36,6 +36,7 @@ function failure(error: unknown): ActionState {
   if (error instanceof SourceForbiddenError) return { ok: false, code: "forbidden" };
   if (error instanceof SourceConflictError) return { ok: false, code: "stale" };
   if (error instanceof SourceNotFoundError) return { ok: false, code: "not_found" };
+  if (error instanceof SourceRemovedError) return { ok: false, code: "rule_refused" };
   if (error instanceof SourceRuleError) return { ok: false, code: "invalid_input" };
   return { ok: false, code: "generic" };
 }

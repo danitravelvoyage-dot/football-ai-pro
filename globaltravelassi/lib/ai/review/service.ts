@@ -11,7 +11,7 @@ export class ReviewForbiddenError extends Error {
 export class ReviewRuleError extends Error {
   constructor(
     message: string,
-    public readonly code: "not_allowed_for_kind" | "already_decided" | "expired" | "not_found" | "stale" | "invalid",
+    public readonly code: "not_allowed_for_kind" | "already_decided" | "expired" | "not_found" | "stale" | "invalid" | "not_decided",
   ) {
     super(message);
     this.name = "ReviewRuleError";
@@ -106,6 +106,18 @@ export class ReviewService {
     return item;
   }
 
+  /**
+   * Opens an item unless an open item with the same kind, subject and payload already exists. A repeated request for the
+   * same decision gets the same item back, so the owner decides once and nothing is queued twice.
+   */
+  async openOnce(input: ReviewOpenInput): Promise<{ item: ReviewItem; created: boolean }> {
+    const open = await this.deps.store.list({ status: "open", kind: input.kind, limit: 500 });
+    const payload = JSON.stringify(input.payload);
+    const same = open.find((i) => i.subjectRef === input.subjectRef && JSON.stringify(i.payload) === payload);
+    if (same) return { item: same, created: false };
+    return { item: await this.open(input), created: true };
+  }
+
   async list(actor: Actor, filter: { status?: ReviewStatus; kind?: ReviewKind; limit: number }): Promise<ReviewItem[]> {
     owner(actor);
     return this.deps.store.list(filter);
@@ -161,6 +173,30 @@ export class ReviewService {
     return { item: decided, effect };
   }
 
+  /**
+   * Records a correction to a decided item. The decision is never rewritten: the item keeps its status, decider and time.
+   * The correction is a new audit entry that quotes the original decision and the owner's reason. Nothing is reversed
+   * automatically. An answer already delivered stays delivered; the owner follows up through the service that owns it.
+   */
+  async recordCorrection(actor: Actor, id: string, reason: string): Promise<ReviewItem> {
+    const by = owner(actor);
+    const trimmed = reason.trim();
+    if (trimmed.length < 3 || trimmed.length > 500) throw new ReviewRuleError("Give a reason of 3 to 500 characters.", "invalid");
+    const item = await this.deps.store.get(id);
+    if (!item) throw new ReviewRuleError("Review item not found.", "not_found");
+    if (item.status === "open") throw new ReviewRuleError("Only a decided item can be corrected.", "not_decided");
+    await this.audit(by, "correction_recorded", id, item, {
+      decision: null,
+      reason: trimmed,
+      correctionReason: trimmed,
+      originalStatus: item.status,
+      originalDecidedBy: item.decidedBy,
+      originalDecidedAt: item.decidedAt,
+      originalReason: item.decisionReason,
+    });
+    return item;
+  }
+
   private async audit(by: string, type: string, id: string, before: ReviewItem, meta: Record<string, unknown>, after?: ReviewItem): Promise<void> {
     await this.deps.audit.write({
       id: this.deps.newId(),
@@ -175,6 +211,7 @@ export class ReviewService {
 }
 
 function messageFor(code: string): string {
+  if (code === "not_decided") return "Only a decided item can be corrected.";
   if (code === "already_decided") return "This item was already decided.";
   if (code === "expired") return "This item expired before a decision and can no longer be decided.";
   if (code === "not_allowed_for_kind") return "This decision is not allowed for this kind of item.";
