@@ -1,15 +1,15 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0015 are all unapplied).
+Status date: 2026-11-21 (session 6). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+No migration has been applied to any database (0002 to 0016 are all unapplied).
 
-## Verification (session 5, CRM and sales pipeline)
+## Verification (session 6, competitor intelligence phase 1)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 50 files, 669 tests, all passing (616 at the session 4 checkpoint, 435 before the scheduler) |
+| `npm test` (vitest) | 54 files, 728 tests, all passing (669 at the session 5 checkpoint, 616 at session 4, 435 before the scheduler) |
 | `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
 | SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal; 17 CRM tests covering the stage guard, database-written history, append-only records, application-link rule, one open follow-up per lead, and operator, ordinary-user and anonymous isolation |
@@ -163,6 +163,26 @@ Findings and status:
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
 
+## Session 6 additions (competitor intelligence, phase 1)
+
+**Audit before starting.** The CRM from session 5 is complete for its core. Still open from that session: AI enrichment (no model key), the funnel on the overview and analytics pages, and store-level tests for the Supabase CRM store. The visa allowlist (`ai_sources_allowlist`) holds bare hosts for visa research. It was not reused for competitors, because competitor sources need a URL, a reviewed-terms record, a read interval and a read history.
+
+**Built and tested (migration 0016, not applied):**
+- **Approved source registry:** `ai_competitor_sources`. Only https URLs on public DNS names are accepted: no IP literals, no credentials, no non-default ports, no fragments, no localhost or internal names. The owner must confirm the terms are reviewed. The URL, host and terms record are fixed after registration (column-level grants). A different page needs a new source. Sources can be paused.
+- **Public monitoring:** the fetcher reads robots.txt for the generic agent first. A disallowed page is not read. A robots file that cannot be read because of a server error fails closed. Redirects are refused, the timeout is 15 seconds, the page size is capped at 1 MB, and only HTML or plain text is accepted. A failure is returned as a status, never thrown, so one bad source cannot stop a run.
+- **Read interval:** a source is read at most once per configured interval (6 hours minimum). An owner can force a read.
+- **Offer extraction:** displayed prices in DZD, EUR, USD, MAD and TND, read before or after the currency symbol, stored in minor units with up to 60 characters of context. Only what the page displays is recorded. Nothing is estimated.
+- **Change detection:** content hash, price added or removed, and lowest-price up or down per currency. The first read is a baseline with no changes. A failed read is never compared against.
+- **Opportunities and threats:** a competitor's lowest price going up, or an offer being removed, is an opportunity. A price going down, or an offer being added, is a threat. These are owner-facing signals only.
+- **Observations are append-only.** Every read is stored with its status, including failures, so the history shows gaps.
+- **Owner-only service:** agents and the system are refused. Every read is audited with its status and change codes.
+
+**Not built in this phase:**
+- **Owner page for the competitor report.** The service and report exist and are tested. The page and its translations are not built. This is the first item for phase 1 follow-up.
+- **Scheduled monitoring.** Reads run only when the owner calls `monitor`. The scheduler is not wired to it yet, and no live site has been read.
+- **Pricing intelligence beyond the lowest price per currency,** and market opportunity detection that combines the competitor data with the business's own prices. The platform has no store of its own prices yet.
+- **Live verification.** All tests use a fake HTTP layer. No real competitor site has been read, and no outbound request was made from this environment.
+
 ## Remaining incomplete features
 
 Priority order follows the brief's list.
@@ -171,6 +191,7 @@ Priority order follows the brief's list.
 - **Campaign management (7):** not started. Only the `ai_campaigns` table exists.
 - **Content generation and approval (8):** content agents and approval gating exist. No provider is connected, and nothing is published.
 - **Analytics and performance (9):** monitoring and observability exist. The analytics workflow uses deterministic aggregation only. No live data source.
+- **Competitor intelligence (phase 1 of the directive):** registry, monitoring, change detection and report are built. Missing: the owner page, scheduling, and combining with the business's own prices.
 - **Lead management and sales automation (10):** CRM core built in session 5 (leads, pipeline, history, scoring, follow-up approval). Not yet built: AI enrichment, competitor-aware sales actions, and the sales agents' use of the CRM.
 - **Notifications and reporting (11):** core built (inbox service, rules, triggers, migration 0012 unapplied). Missing: the inbox page, the scheduled owner report, and an independent check for a missing worker.
 - **Admin dashboard and owner controls (12):** mostly built. Knowledge base create and edit forms are not built; the knowledge base is read-only in the dashboard.

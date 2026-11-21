@@ -35,6 +35,9 @@ import { SupabaseContentStore } from "./content/supabase-store";
 import type { Notice } from "./notifications/rules";
 import { CrmService } from "./crm/service";
 import { SupabaseCrmStore } from "./crm/supabase-store";
+import { CompetitorService } from "./competitors/service";
+import { SupabaseCompetitorStore } from "./competitors/supabase-store";
+import type { HttpFetch } from "./competitors/fetch";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -68,6 +71,7 @@ export interface AiServices {
   campaigns: CampaignService;
   content: ContentReviewService;
   crm: CrmService;
+  competitors: CompetitorService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -171,7 +175,8 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     },
   });
   const crm = new CrmService({ store: new SupabaseCrmStore(db), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, audit, usage, providers: configs };
+  const competitors = new CompetitorService({ store: new SupabaseCompetitorStore(db), fetch: ((url, init) => fetch(url, init)) as HttpFetch, audit, now, newId });
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {
