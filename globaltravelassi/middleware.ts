@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { defaultLocale, isLocale } from "@/lib/i18n/config";
-import { refreshSession } from "@/lib/supabase/middleware";
+import { refreshSession, type SessionRefresh } from "@/lib/supabase/middleware";
 import { isSupabaseConfigured, siteConfig } from "@/lib/config";
 import { buildCsp, CSP_REPORT_ONLY_HEADER, generateNonce } from "@/lib/security/csp";
 
@@ -40,20 +40,15 @@ async function handleRequest(request: NextRequest, csp: string): Promise<NextRes
     return NextResponse.redirect(url);
   }
 
-  // 2. Pass the locale to the root layout (sets lang and dir), and the nonce policy to Next.js for its scripts.
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-locale", first);
-  requestHeaders.set("Content-Security-Policy", csp);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-
-  // 3. Keep the session fresh and protect private areas.
+  // 2. Keep the session fresh and protect private areas. The refresh runs first: it updates the request cookies.
+  let session: SessionRefresh = { user: null, cookies: [] };
   if (isSupabaseConfigured()) {
-    const user = await refreshSession(request, response);
-    if (!user && PROTECTED.test(pathname)) {
+    session = await refreshSession(request);
+    if (!session.user && PROTECTED.test(pathname)) {
       const login = request.nextUrl.clone();
       login.pathname = `/${first}/auth/login`;
       login.search = `?next=${encodeURIComponent(pathname + search)}`;
-      return NextResponse.redirect(login);
+      return withCookies(NextResponse.redirect(login), session);
     }
   } else if (PROTECTED.test(pathname)) {
     const login = request.nextUrl.clone();
@@ -62,6 +57,16 @@ async function handleRequest(request: NextRequest, csp: string): Promise<NextRes
     return NextResponse.redirect(login);
   }
 
+  // 3. Forward the locale (root layout sets lang and dir), the nonce policy (Next.js nonces its scripts) and the
+  //    refreshed session cookies. The headers are copied after the refresh, so the page never sees an expired token.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-locale", first);
+  requestHeaders.set("Content-Security-Policy", csp);
+  return withCookies(NextResponse.next({ request: { headers: requestHeaders } }), session);
+}
+
+function withCookies(response: NextResponse, session: SessionRefresh): NextResponse {
+  for (const { name, value, options } of session.cookies) response.cookies.set(name, value, options);
   return response;
 }
 

@@ -1,12 +1,29 @@
-import { createServerClient } from "@supabase/ssr";
-import type { NextRequest, NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
+import type { NextRequest } from "next/server";
 import { siteConfig } from "@/lib/config";
 
+export interface SessionCookie {
+  name: string;
+  value: string;
+  options?: CookieOptions;
+}
+
+export interface SessionRefresh {
+  user: User | null;
+  /** Cookies the refresh wrote. The caller sets them on the response it returns, so the browser keeps the new session. */
+  cookies: SessionCookie[];
+}
+
 /**
- * Refreshes the Supabase session cookies on every matched request and returns the
- * signed-in user (or null). Uses getUser(), which validates the token with Supabase.
+ * Refreshes the Supabase session and returns the signed-in user (or null). Uses getUser(), which validates the token
+ * with Supabase.
+ *
+ * Refreshed cookies are written to the request too. The caller must build the headers it forwards to the page AFTER
+ * this call, so server components see the refreshed session instead of the expired one.
  */
-export async function refreshSession(request: NextRequest, response: NextResponse) {
+export async function refreshSession(request: NextRequest): Promise<SessionRefresh> {
+  const written: SessionCookie[] = [];
   const supabase = createServerClient(siteConfig.supabaseUrl, siteConfig.supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -14,11 +31,10 @@ export async function refreshSession(request: NextRequest, response: NextRespons
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        written.push(...cookiesToSet);
       },
     },
   });
   const { data, error } = await supabase.auth.getUser();
-  if (error) return null;
-  return data.user;
+  return { user: error ? null : data.user, cookies: written };
 }

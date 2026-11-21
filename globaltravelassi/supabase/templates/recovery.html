@@ -1,0 +1,52 @@
+<!-- GLOBALTRAVELASSI: Supabase Auth "recovery" email. Paste into Supabase Dashboard > Authentication > Email Templates.
+     The language comes from the user metadata "locale" set at sign-up (ar, fr or en). Without it, all three languages are shown.
+     Uses only the ConfirmationURL and Data.locale template fields. No tracking, no external images. -->
+{{ $l := or .Data.locale "" }}
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#eef1f6">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef1f6;padding:24px 0"><tr><td align="center">
+<table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden">
+<tr><td style="background:#0b1b3a;padding:20px 32px"><p style="margin:0;color:#c9a24a;font-size:18px;font-weight:700;letter-spacing:1px;font-family:Arial,sans-serif">GLOBALTRAVELASSI</p></td></tr>
+<tr><td>
+{{ if eq $l "ar" }}
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="rtl" lang="ar" style="font-family:Tahoma, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:right"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">إعادة تعيين كلمة المرور</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">تلقّينا طلبًا لإعادة تعيين كلمة مرور حسابك في GLOBALTRAVELASSI. يعمل الرابط مرة واحدة وتنتهي صلاحيته قريبًا.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:right"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">اختيار كلمة مرور جديدة</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:right"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">إذا لم تطلب ذلك، تجاهل هذه الرسالة: تبقى كلمة مرورك كما هي. لا نطلب كلمة المرور عبر البريد الإلكتروني أبدًا.</p></td></tr>
+</table>
+{{ else if eq $l "fr" }}
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="ltr" lang="fr" style="font-family:'Segoe UI', Helvetica, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:left"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">Réinitialisez votre mot de passe</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">Nous avons reçu une demande de réinitialisation du mot de passe de votre compte GLOBALTRAVELASSI. Le lien ne fonctionne qu’une fois et expire rapidement.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:left"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">Choisir un nouveau mot de passe</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:left"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail : votre mot de passe reste inchangé. Nous ne demandons jamais votre mot de passe par e-mail.</p></td></tr>
+</table>
+{{ else if eq $l "en" }}
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="ltr" lang="en" style="font-family:'Segoe UI', Helvetica, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:left"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">Reset your password</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">We received a request to reset the password of your GLOBALTRAVELASSI account. The link works once and expires soon.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:left"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">Choose a new password</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:left"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">If you did not ask for this, ignore this email: your password stays the same. We never ask for your password by email.</p></td></tr>
+</table>
+{{ else }}
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="rtl" lang="ar" style="font-family:Tahoma, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:right"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">إعادة تعيين كلمة المرور</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">تلقّينا طلبًا لإعادة تعيين كلمة مرور حسابك في GLOBALTRAVELASSI. يعمل الرابط مرة واحدة وتنتهي صلاحيته قريبًا.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:right"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">اختيار كلمة مرور جديدة</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:right"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">إذا لم تطلب ذلك، تجاهل هذه الرسالة: تبقى كلمة مرورك كما هي. لا نطلب كلمة المرور عبر البريد الإلكتروني أبدًا.</p></td></tr>
+</table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="ltr" lang="fr" style="font-family:'Segoe UI', Helvetica, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:left"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">Réinitialisez votre mot de passe</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">Nous avons reçu une demande de réinitialisation du mot de passe de votre compte GLOBALTRAVELASSI. Le lien ne fonctionne qu’une fois et expire rapidement.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:left"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">Choisir un nouveau mot de passe</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:left"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail : votre mot de passe reste inchangé. Nous ne demandons jamais votre mot de passe par e-mail.</p></td></tr>
+</table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="ltr" lang="en" style="font-family:'Segoe UI', Helvetica, Arial, sans-serif">
+<tr><td style="padding:24px 32px 0;text-align:left"><h1 style="margin:0 0 12px;font-size:22px;color:#0b1b3a">Reset your password</h1><p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#243656">We received a request to reset the password of your GLOBALTRAVELASSI account. The link works once and expires soon.</p></td></tr>
+<tr><td style="padding:8px 32px 16px;text-align:left"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0b1b3a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px">Choose a new password</a></td></tr>
+<tr><td style="padding:0 32px 24px;text-align:left"><p style="margin:0;font-size:12px;line-height:1.5;color:#6b7a93">If you did not ask for this, ignore this email: your password stays the same. We never ask for your password by email.</p></td></tr>
+</table>
+{{ end }}
+</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

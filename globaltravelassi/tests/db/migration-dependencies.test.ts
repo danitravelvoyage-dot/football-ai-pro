@@ -20,17 +20,25 @@ describe("migration order", () => {
     expect(nums).toEqual(Array.from({ length: nums.length }, (_, i) => i + 1));
   });
 
-  it("0010 (append-only audit triggers) comes before 0018, and 0019 is the last migration", () => {
+  it("0010 (append-only audit triggers) comes before 0018, and 0021 is the last migration", () => {
     const tenth = numbered.findIndex((f) => f.startsWith("0010_"));
     const eighteenth = numbered.findIndex((f) => f.startsWith("0018_"));
     expect(tenth).toBeGreaterThanOrEqual(0);
     expect(tenth).toBeLessThan(eighteenth);
-    expect(numbered[numbered.length - 1]).toBe("0019_manual_payments.sql");
+    expect(numbered[numbered.length - 1]).toBe("0021_customer_email_notifications.sql");
   });
 
   it("0018 defines no dependency on a later migration", () => {
     const sql = read("supabase/migrations/0018_owner_approval_center.sql");
     expect(sql).not.toMatch(/0019|0020/);
+  });
+});
+
+describe("customer launch migrations", () => {
+  it("0020 and 0021 depend on no AI migration", () => {
+    for (const f of ["0020_customer_hardening.sql", "0021_customer_email_notifications.sql"]) {
+      expect(read(`supabase/migrations/${f}`), f).not.toMatch(/\bai_[a-z_]+|is_admin_or_operator/);
+    }
   });
 });
 
@@ -85,9 +93,11 @@ describe("applied history is not rewritten", () => {
   it("every migration from 0001 to 0018 is in the manifest, so an edit to any of them shows up", () => {
     const manifest = JSON.parse(read("docs/migrations/manifest.json")) as { files: Record<string, string> };
     const migrations = Object.keys(manifest.files).filter((f) => f.startsWith("supabase/migrations/"));
-    expect(migrations).toHaveLength(19);
+    expect(migrations).toHaveLength(21);
     expect(migrations[0]).toBe("supabase/migrations/0001_init.sql");
     expect(migrations[17]).toBe("supabase/migrations/0018_owner_approval_center.sql");
     expect(migrations[18]).toBe("supabase/migrations/0019_manual_payments.sql");
+    expect(migrations[19]).toBe("supabase/migrations/0020_customer_hardening.sql");
+    expect(migrations[20]).toBe("supabase/migrations/0021_customer_email_notifications.sql");
   });
 });

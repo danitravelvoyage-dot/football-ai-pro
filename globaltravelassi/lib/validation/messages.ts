@@ -41,6 +41,8 @@ export function formMessages(dict: Dict): Record<string, string> {
     service_saved: dict.admin.servicesPage.saved,
     profile_saved: dict.dashboard.profileSaved,
     customer_updated: dict.common.saved,
+    timeline_not_saved: dict.customerEmails.timelineNotSaved,
+    emails_retried: dict.customerEmails.retried,
     workflow_started: dict.commandCenter.startTitle,
     tick_done: dict.commandCenter.tickDone,
     decided: dict.commandCenter.decided,

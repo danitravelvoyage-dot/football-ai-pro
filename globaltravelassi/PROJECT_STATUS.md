@@ -819,3 +819,55 @@ Scope: customer website only. No database, migration, staging or deployment work
 ### Staging decision
 
 Enforcement stays off. The next gate is staging with the logged-in flows, which needs owner approval for a Supabase staging project. Enforcement after that run, with the remaining violations cleared.
+
+## Launch preparation and customer emails (local, not deployed)
+
+Baseline `09702ba`. Local commit only. Nothing pushed or deployed, no migration applied, no database touched, no email sent.
+
+### Security fixes (found in this pass's audit)
+
+| Finding | Severity | Fix |
+|---|---|---|
+| A customer could insert a document row already marked verified (direct API call) | High | 0020: column-level insert grant; policy requires `verified = false` |
+| A customer could register a document row pointing at another customer's file, which the owner would then open under the wrong request | High | 0020: the policy requires the path to be in `<own id>/<request id>/` |
+| A disabled account could still create requests, register documents, upload files and submit proofs by posting directly | Medium | Server actions check the account is active (`lib/actions/customer-session.ts`); 0020 adds the same check to the database policies and the storage upload |
+| A customer could choose the reference, id or timestamps of a new request | Medium | 0020: column-level insert grant |
+| Request deletion redirected to an unvalidated locale from the form (`/<anything>/admin/...`) | Low (owner only) | The locale is validated |
+| The middleware forwarded the pre-refresh session cookie to the page | Medium (robustness) | The refresh runs first; refreshed cookies go to the page and to the browser. Regression test included |
+| The owner could set "payment pending" by hand, showing a payment step with no proof behind it | Medium (integrity) | Refused in the action; hidden in the select |
+| A status change whose timeline write failed was reported as a success | Low | Now reported as `timeline_not_saved` |
+
+### Customer-facing fixes
+
+- The timeline showed English database text for payment events in ar and fr. It is now localised.
+- After a proof upload, the payment card offered a second upload, which the database refused. It now shows "waiting for review".
+- The admin overview counted only owner-recorded pending payments. Proofs awaiting review are now counted too.
+- Five business services were missing from the catalogue (France visa appointments, visa file assistance, flights, hotels, itineraries). Added in `supabase/seed_catalog.sql` with no price, plus the `booking` and `itinerary` categories (0020).
+
+### Customer emails
+
+Ten transactional emails, plus localised Supabase Auth templates. See `docs/EMAIL_NOTIFICATIONS.md`. SMTP via nodemailer 10.6.1 (7.x had high advisories), off by default. The outbound-network guard now allows SMTP in `lib/email/transport.ts` and `lib/email/config.ts` only. The AI layer may not import the email module (tested).
+
+### Migrations added (not applied)
+
+- `0020_customer_hardening.sql` (depends on 0001), with rollback `docs/migrations/0020_rollback.sql`.
+- `0021_customer_email_notifications.sql` (depends on 0001, 0019, 0020), with rollback `docs/migrations/0021_rollback.sql`.
+- The manifest was regenerated. Hashes of 0001–0019 are unchanged.
+
+### Verification
+
+- `npm run verify`: exit 0. 1429 tests passed, 3 skipped (1329 before). Production build passes.
+- `npm run test:browser`: 26/26, including 33 admin pages redirecting to sign-in in three languages.
+- Auth templates executed with Go `html/template`: ar, fr, en, missing locale, empty metadata.
+- Email preview rendered in Chromium: Arabic right to left at 375px, no horizontal scroll.
+
+### Not verified
+
+- No logged-in browser test: there is no staging project.
+- No migration has run on Supabase. 0020 and 0021 ran on PGlite only.
+- No real email sent. Inbox rendering and spam placement are unknown.
+- `npm audit` still reports `zod` 3 (high, memory use on oversized collections) and the `postcss` bundled with Next 15 (moderate). The fixes are major upgrades and are deferred.
+
+### Decision
+
+**READY_FOR_STAGING** (code), once the owner approves a staging project and the migrations 0019–0021 on it. **Not ready for production**: the logged-in flows, the migrations and email delivery have to pass on staging first (`docs/staging/STAGING_RUNBOOK.md`).

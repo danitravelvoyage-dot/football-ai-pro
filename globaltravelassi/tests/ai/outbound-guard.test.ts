@@ -59,16 +59,41 @@ describe("outbound requests", () => {
   });
 });
 
+/**
+ * Customer transactional email, authorized by the owner: SMTP through nodemailer, to the customer's own account address,
+ * off unless EMAIL_DELIVERY_ENABLED=true. Only these modules may mention SMTP or nodemailer, and the AI layer may not
+ * import the email module at all.
+ */
+const EMAIL_ALLOWLIST: Record<string, string> = {
+  "lib/email/transport.ts": "the only module that sends email: SMTP server configured by the owner",
+  "lib/email/config.ts": "reads the SMTP settings (names only are ever reported)",
+};
+
 describe("messaging, email and payment", () => {
-  it("no messaging, email or payment client is referenced by the platform's code", () => {
+  it("no messaging, email or payment client is referenced outside the customer email transport", () => {
     const pattern = /\b(twilio|nodemailer|sendgrid|mailgun|smtp|whatsapp-web|wa-automate|baileys|stripe|paypal|chargily|cmi\.|sendmail)\b/i;
-    const offenders = sources.filter((s) => pattern.test(s.text)).map((s) => s.path);
+    const offenders = sources.filter((s) => pattern.test(s.text) && !(s.path in EMAIL_ALLOWLIST)).map((s) => s.path);
     expect(offenders).toEqual([]);
   });
 
-  it("no package that sends messages or moves money is in the dependencies", () => {
+  it("the email transport uses nothing but nodemailer: no messaging or payment client", () => {
+    // sendMail() is nodemailer's own method; the local "sendmail" binary transport is what stays forbidden.
+    const pattern = /\b(twilio|sendgrid|mailgun|whatsapp-web|wa-automate|baileys|stripe|paypal|chargily)\b|sendmail\s*:/i;
+    for (const path of Object.keys(EMAIL_ALLOWLIST)) {
+      const source = sources.find((s) => s.path === path);
+      expect(source, path).toBeDefined();
+      expect(pattern.test(source!.text), path).toBe(false);
+    }
+  });
+
+  it("the AI layer never imports the customer email module", () => {
+    const offenders = sources.filter((s) => s.path.startsWith("lib/ai/") && /from\s+["'](@\/lib\/email|\.\.\/+email)/.test(s.text)).map((s) => s.path);
+    expect(offenders).toEqual([]);
+  });
+
+  it("no package that sends messages or moves money is in the dependencies, except the authorized SMTP client", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-    const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter((n) => n !== "nodemailer" && n !== "@types/nodemailer");
     const banned = names.filter((n) => /twilio|sendgrid|nodemailer|mailgun|stripe|paypal|whatsapp|baileys/i.test(n));
     expect(banned).toEqual([]);
   });

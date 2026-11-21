@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createServerSupabase } from "@/lib/supabase/server";
 import { selfServicePaymentMethods } from "@/lib/domain";
 import { checkProof, PROOF_MAX_BYTES, PROOF_MIME_TYPES, REASON_MAX, REASON_MIN, rejectionMessageIsValid } from "@/lib/payments/rules";
 import { adminSession } from "./admin-session";
 import { siteConfig } from "@/lib/config";
 import type { ActionState } from "./types";
+import { customerSession } from "./customer-session";
+import { queueCustomerEmail } from "@/lib/email/notify";
 
 /** Maps a database refusal to a code the screen shows. The database message is never shown to the visitor. */
 function paymentFailure(message: string): ActionState {
@@ -59,10 +60,9 @@ export async function submitPaymentEvidenceAction(input: {
   if (!parsed.success) return { ok: false, code: "invalid_input" };
   const d = parsed.data;
 
-  const supabase = await createServerSupabase();
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
-  if (!userId) return { ok: false, code: "unauthorized" };
+  const session = await customerSession();
+  if (!session.ok) return { ok: false, code: session.code };
+  const { supabase, userId } = session;
 
   const pre = checkProof({ userId, applicationId: d.applicationId, path: d.storagePath, mime: d.mimeType, size: d.sizeBytes });
   if (!pre.ok) return { ok: false, code: pre.code };
@@ -76,6 +76,7 @@ export async function submitPaymentEvidenceAction(input: {
     p_file_name: d.fileName,
   });
   if (error || !data) return paymentFailure(error?.message ?? "");
+  queueCustomerEmail(supabase, "payment_proof_received", String(data));
   refresh();
   return { ok: true, code: "submitted", id: String(data) };
 }
@@ -112,6 +113,7 @@ export async function decidePaymentAction(formData: FormData): Promise<ActionSta
     p_customer_message: parsed.data.customerMessage || null,
   });
   if (error || !data) return paymentFailure(error?.message ?? "");
+  queueCustomerEmail(admin.supabase, String(data) === "received" ? "payment_approved" : "payment_rejected", parsed.data.paymentId);
   refresh();
   return { ok: true, code: String(data) === "received" ? "confirmed" : "rejected", id: parsed.data.paymentId };
 }

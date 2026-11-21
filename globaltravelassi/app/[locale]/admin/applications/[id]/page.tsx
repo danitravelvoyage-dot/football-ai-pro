@@ -49,7 +49,10 @@ export default async function AdminApplicationPage({ params }: { params: Promise
   const wa = whatsappLink(`${app.reference}`);
   const received: Record<string, number> = {};
   for (const p of payments) if (p.status === "received") received[p.currency] = (received[p.currency] ?? 0) + Number(p.amount);
-  const statusOptions = applicationStatuses.map((s) => ({ value: s, label: dict.statuses[s] }));
+  // "Payment pending" is set by a proof submission only; it is listed only to show the current state.
+  const statusOptions = applicationStatuses
+    .filter((s) => s !== "payment_pending" || status === "payment_pending")
+    .map((s) => ({ value: s, label: dict.statuses[s] }));
   const currencyOptions = currencies.map((c) => ({ value: c, label: c }));
   const methodOptions = paymentMethods.map((m) => ({ value: m, label: dict.paymentMethods[m] }));
   const paymentStatusOptions = paymentStatuses.map((s) => ({ value: s, label: dict.paymentStatuses[s] }));

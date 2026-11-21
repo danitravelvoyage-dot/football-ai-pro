@@ -26,7 +26,7 @@ export type PaymentStatus = (typeof paymentStatuses)[number];
 export const currencies = ["DZD", "EUR", "USD"] as const;
 export type Currency = (typeof currencies)[number];
 
-export const serviceCategories = ["visa", "appointment", "e_visa", "transit", "european_trip", "consultation"] as const;
+export const serviceCategories = ["visa", "appointment", "e_visa", "transit", "european_trip", "consultation", "booking", "itinerary"] as const;
 export type ServiceCategory = (typeof serviceCategories)[number];
 
 /** Statuses in which the customer may still add or remove documents. */
@@ -116,6 +116,7 @@ export interface EventRow {
   id: string;
   application_id: string;
   kind: "created" | "status" | "document" | "payment";
+  /** A request status. Payment decision events written by the database carry a payment status ("received"). */
   to_status: ApplicationStatus | null;
   message: string;
   created_at: string;

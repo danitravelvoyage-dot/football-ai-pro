@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { siteConfig } from "@/lib/config";
 import { noteSchema, paymentSchema, serviceSchema, statusSchema } from "@/lib/validation/schemas";
-import { formObject, parseWith } from "./helpers";
+import { formObject, localeFrom, parseWith } from "./helpers";
 import type { ActionState } from "./types";
+import { queueCustomerEmail, retryFailedCustomerEmails } from "@/lib/email/notify";
+import { statusEmailKind } from "@/lib/email/kinds";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,6 +35,9 @@ export async function updateStatusAction(formData: FormData): Promise<ActionStat
   if (!admin) return { ok: false, code: "unauthorized" };
   const parsed = parseWith(statusSchema, formObject(formData));
   if (!parsed.ok) return parsed.state;
+  // "Payment pending" is set only when a customer submits a proof. Setting it by hand would show a payment step with
+  // no proof behind it.
+  if (parsed.data.status === "payment_pending") return { ok: false, code: "invalid_input", fieldErrors: { status: "invalid_option" } };
 
   const { data, error } = await admin.supabase
     .from("applications")
@@ -42,13 +47,25 @@ export async function updateStatusAction(formData: FormData): Promise<ActionStat
   if (error) return { ok: false, code: "generic" };
   if (!data?.length) return { ok: false, code: "not_found" };
 
-  await admin.supabase.from("application_events").insert({
-    application_id: parsed.data.applicationId,
-    kind: "status",
-    to_status: parsed.data.status,
-    message: parsed.data.message,
-    actor_id: admin.userId,
-  });
+  const { data: event, error: eventError } = await admin.supabase
+    .from("application_events")
+    .insert({
+      application_id: parsed.data.applicationId,
+      kind: "status",
+      to_status: parsed.data.status,
+      message: parsed.data.message,
+      actor_id: admin.userId,
+    })
+    .select("id")
+    .single();
+  if (eventError || !event) {
+    // The status changed but the customer's timeline did not record it: say so instead of reporting full success.
+    console.error("updateStatusAction: timeline event not written", eventError?.code);
+    refresh();
+    return { ok: false, code: "timeline_not_saved" };
+  }
+  const emailKind = statusEmailKind(parsed.data.status);
+  if (emailKind) queueCustomerEmail(admin.supabase, emailKind, event.id);
   refresh();
   return { ok: true, code: "status_saved" };
 }
@@ -131,6 +148,7 @@ export async function setDocumentVerifiedAction(formData: FormData): Promise<Act
   const { data, error } = await admin.supabase.from("documents").update({ verified }).eq("id", documentId).select("id");
   if (error) return { ok: false, code: "generic" };
   if (!data?.length) return { ok: false, code: "not_found" };
+  queueCustomerEmail(admin.supabase, "document_review_result", documentId);
   refresh();
   return { ok: true, code: "saved" };
 }
@@ -144,7 +162,8 @@ export async function deleteApplicationAction(formData: FormData): Promise<Actio
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
   const applicationId = String(formData.get("applicationId") ?? "");
-  const locale = String(formData.get("locale") ?? "ar");
+  // Validated: the locale goes into a redirect path, so a crafted value must not become another site's address.
+  const locale = localeFrom(formData);
   if (!UUID.test(applicationId)) return { ok: false, code: "not_found" };
 
   const { data, error } = await admin.supabase.rpc("delete_application_request", { p_application: applicationId });
@@ -225,4 +244,21 @@ export async function setCustomerActiveAction(formData: FormData): Promise<Actio
   if (!data?.length) return { ok: false, code: "not_found" };
   refresh();
   return { ok: true, code: "customer_updated" };
+}
+
+/** Owner only. Another attempt for failed customer emails (at most five attempts each; a sent email is never resent). */
+export async function retryFailedEmailsAction(): Promise<ActionState> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, code: "unauthorized" };
+  const { data, error } = await admin.supabase
+    .from("customer_email_notifications")
+    .select("id")
+    .eq("status", "failed")
+    .lt("attempts", 5)
+    .order("created_at", { ascending: true })
+    .limit(50);
+  if (error) return { ok: false, code: "generic" };
+  const totals = await retryFailedCustomerEmails(admin.supabase, ((data ?? []) as { id: string }[]).map((r) => r.id));
+  refresh();
+  return { ok: true, code: "emails_retried", id: String(totals.sent), reference: String(totals.failed) };
 }

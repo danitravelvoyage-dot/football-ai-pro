@@ -128,7 +128,8 @@ export async function getAdminOverview(): Promise<AdminOverview> {
   let pendingPayments = 0;
   for (const p of (payments.data ?? []) as { amount: string | number; currency: string; status: string }[]) {
     if (p.status === "received") receivedByCurrency[p.currency] = (receivedByCurrency[p.currency] ?? 0) + Number(p.amount);
-    if (p.status === "pending") pendingPayments += 1;
+    // Owner-recorded payments not yet received, and customer proofs waiting for the owner's check.
+    if (p.status === "pending" || p.status === "pending_review") pendingPayments += 1;
   }
 
   return {
@@ -264,4 +265,34 @@ export async function getExportRows() {
     .order("created_at", { ascending: false })
     .limit(5000);
   return data ?? [];
+}
+
+// ---------- Customer email log (owner only; migration 0021) ------------------------------------------------------------
+
+export interface CustomerEmailLogRow {
+  id: string;
+  kind: string;
+  application_id: string | null;
+  recipient: string;
+  locale: string;
+  status: "pending" | "sent" | "failed" | "skipped";
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
+  template_data: { reference?: string } | null;
+}
+
+/** The latest customer emails, newest first. Returns an empty list when the log table does not exist yet. */
+export async function getCustomerEmailLog(options: { applicationId?: string; limit?: number } = {}): Promise<CustomerEmailLogRow[]> {
+  const supabase = await createServerSupabase();
+  let query = supabase
+    .from("customer_email_notifications")
+    .select("id, kind, application_id, recipient, locale, status, attempts, last_error, created_at, sent_at, template_data")
+    .order("created_at", { ascending: false })
+    .limit(Math.min(options.limit ?? 100, 200));
+  if (options.applicationId) query = query.eq("application_id", options.applicationId);
+  const { data, error } = await query;
+  if (error) return [];
+  return (data ?? []) as CustomerEmailLogRow[];
 }

@@ -57,7 +57,8 @@ export async function signUpAction(formData: FormData): Promise<ActionState> {
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      data: { full_name: parsed.data.fullName, whatsapp: parsed.data.whatsapp },
+      // `locale` picks the language of the Supabase Auth emails (see supabase/templates/). The database ignores it.
+      data: { full_name: parsed.data.fullName, whatsapp: parsed.data.whatsapp, locale },
       emailRedirectTo: `${siteConfig.siteUrl}/${locale}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });

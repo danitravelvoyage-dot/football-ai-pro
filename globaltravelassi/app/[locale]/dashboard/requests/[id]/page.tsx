@@ -51,6 +51,7 @@ export default async function RequestPage({
   const typeLabels = dict.docTypes as Record<string, string>;
   const mp = dict.manualPayments;
   const paid = payments.some((p) => p.status === "received");
+  const proofWaiting = payments.some((p) => p.status === "pending_review");
   const showPayment = isOpenForPayment(status) && !paid && Boolean(app.services?.price);
   const offered = showPayment
     ? offeredMethods(await loadPaymentMethodSettings(), locale).map((m) => ({
@@ -63,7 +64,16 @@ export default async function RequestPage({
   const eventText = (e: (typeof timeline)[number]) => {
     if (e.kind === "created") return dict.apply.successTitle;
     if (e.kind === "status" && e.to_status) return `${dict.statuses[e.to_status]}${e.message ? ` — ${e.message}` : ""}`;
-    if (e.kind === "payment") return `${dict.dashboard.payments}: ${e.message}`;
+    if (e.kind === "payment") {
+      // Proof and decision events are written by the database in English; show them in the visitor's language. A
+      // rejection keeps the message the team wrote for the customer.
+      const ce = dict.customerEmails;
+      const to = e.to_status as string | null;
+      if (to === "payment_pending") return ce.timelineProofSubmitted;
+      if (to === "received") return ce.timelinePaymentConfirmed;
+      if (to === "rejected") return `${ce.timelineProofRejected}${e.message ? ` — ${e.message}` : ""}`;
+      return `${dict.dashboard.payments}: ${e.message}`;
+    }
     return e.message || dict.common.none;
   };
 
@@ -152,6 +162,8 @@ export default async function RequestPage({
               <h2 className="font-display text-2xl text-navy-900">{mp.title}</h2>
               {paid ? (
                 <Alert tone="success">{mp.paid}</Alert>
+              ) : proofWaiting ? (
+                <div className="mt-4"><Alert tone="info">{dict.customerEmails.proofWaiting}</Alert></div>
               ) : (
                 <>
                   <p className="mt-2 text-sm text-navy-600">{mp.hint}</p>

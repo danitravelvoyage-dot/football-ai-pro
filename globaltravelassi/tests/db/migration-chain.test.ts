@@ -30,10 +30,10 @@ afterAll(async () => {
   await db.close();
 });
 
-describe("migration chain 0002–0019", () => {
+describe("migration chain 0002–0021", () => {
   it("applies every migration after 0001 without error, in order", () => {
     expect(applied).toEqual(files.filter((f) => f !== "0001_init.sql"));
-    expect(applied).toHaveLength(18);
+    expect(applied).toHaveLength(20);
   });
 
   it("creates every table the platform expects", async () => {

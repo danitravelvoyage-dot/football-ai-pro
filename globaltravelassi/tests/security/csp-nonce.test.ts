@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import { buildCsp, generateNonce, supabaseOrigins } from "@/lib/security/csp";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/supabase/middleware", () => ({ refreshSession: async () => null }));
+vi.mock("@/lib/supabase/middleware", () => ({ refreshSession: async () => ({ user: null, cookies: [] }) }));
 
 // Next.js's own parser for the nonce in the request's CSP header. Using it here means the test fails if Next would not
 // find the nonce we put in the policy.

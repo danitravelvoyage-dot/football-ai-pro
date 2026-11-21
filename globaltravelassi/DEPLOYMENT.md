@@ -74,3 +74,7 @@ Push changes to GitHub; Vercel redeploys automatically. Database changes are add
 | Admin area redirects to the dashboard | Run the SQL in step 5 with the correct email, then sign out and back in. |
 | Upload fails | Only PDF, JPG and PNG files up to 10 MB are accepted. Check that the `customer-documents` bucket exists. |
 | Reset link says expired | Links expire after a short time. Request a new one. |
+
+## Customer launch path (current)
+
+The current release targets the customer website and admin dashboard only. Follow `docs/staging/STAGING_RUNBOOK.md` (staging) and then `docs/LAUNCH_CHECKLIST.md` (production). The code needs migrations 0019, 0020 and 0021. Apply them first, with the owner's approval. Customer emails are described in `docs/EMAIL_NOTIFICATIONS.md`, and are off unless `EMAIL_DELIVERY_ENABLED=true`.

@@ -17,14 +17,20 @@ const state = vi.hoisted(() => ({
   removeFails: false,
   intents: [] as string[],
   finished: [] as { id: string; removed: boolean }[],
+  customerActive: true,
+  emails: [] as { kind: string; subject: string }[],
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("@/lib/email/notify", () => ({
+  queueCustomerEmail: (_client: unknown, kind: string, subject: string) => { state.emails.push({ kind, subject }); },
+}));
 
 const fakeClient = () => ({
   auth: { getUser: async () => ({ data: { user: state.user ? { id: state.user } : null } }) },
-  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.adminUser ? { role: "admin", is_active: true } : null }) }) }) }),
+  // The signed-in user's profile: the owner's when an owner is signed in, otherwise an active customer's.
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.adminUser ? { role: "admin", is_active: true } : state.user ? { role: "customer", is_active: state.customerActive } : null }) }) }) }),
   storage: { from: () => ({ remove: async (names: string[]) => { state.storageRemoved.push(...names); return { error: state.removeFails ? { message: "storage unavailable" } : null }; } }) },
   rpc: async (fn: string, args: Record<string, unknown>) => {
     state.rpcCalls.push({ fn, args });
@@ -263,3 +269,45 @@ describe("owner reconciles open proof removals", () => {
   });
 });
 
+
+describe("customer emails and disabled accounts", () => {
+  beforeEach(() => {
+    state.emails = [];
+    state.rpcCalls = [];
+    state.customerActive = true;
+  });
+
+  it("queues the proof-received email for the new payment, and nothing when the database refuses", async () => {
+    state.user = USER;
+    state.adminUser = null;
+    state.rpcResult = { data: PAY, error: null };
+    expect(await submitPaymentEvidenceAction(proof())).toMatchObject({ ok: true });
+    expect(state.emails).toEqual([{ kind: "payment_proof_received", subject: PAY }]);
+    state.emails = [];
+    state.rpcResult = { data: null, error: { message: "This request is not open for payment." } };
+    await submitPaymentEvidenceAction(proof());
+    expect(state.emails).toEqual([]);
+  });
+
+  it("refuses a proof from a disabled account before anything reaches the database", async () => {
+    state.user = USER;
+    state.adminUser = null;
+    state.customerActive = false;
+    expect(await submitPaymentEvidenceAction(proof())).toEqual({ ok: false, code: "disabled" });
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it("queues the confirmed or rejected email after the owner's decision", async () => {
+    state.user = USER;
+    state.adminUser = USER;
+    state.rpcResult = { data: "received", error: null };
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ paymentId: PAY, decision: "approve", reason: "Funds seen on the account", customerMessage: "" })) fd.set(k, v);
+    await decidePaymentAction(fd);
+    state.rpcResult = { data: "rejected", error: null };
+    fd.set("decision", "reject");
+    fd.set("customerMessage", "The amount does not match");
+    await decidePaymentAction(fd);
+    expect(state.emails).toEqual([{ kind: "payment_approved", subject: PAY }, { kind: "payment_rejected", subject: PAY }]);
+  });
+});

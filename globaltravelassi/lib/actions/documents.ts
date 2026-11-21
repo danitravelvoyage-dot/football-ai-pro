@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createServerSupabase } from "@/lib/supabase/server";
 import { siteConfig } from "@/lib/config";
 import { documentSchema } from "@/lib/validation/schemas";
 import { parseWith } from "./helpers";
 import type { ActionState } from "./types";
+import { customerSession } from "./customer-session";
+import { queueCustomerEmail } from "@/lib/email/notify";
 
 /**
  * Called AFTER the browser has uploaded the file to the private bucket under
@@ -24,10 +25,9 @@ export async function registerDocumentAction(input: {
   const parsed = parseWith(documentSchema, input);
   if (!parsed.ok) return parsed.state;
 
-  const supabase = await createServerSupabase();
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
-  if (!userId) return { ok: false, code: "unauthorized" };
+  const session = await customerSession();
+  if (!session.ok) return { ok: false, code: session.code };
+  const { supabase, userId } = session;
   if (!parsed.data.storagePath.startsWith(`${userId}/${parsed.data.applicationId}/`)) {
     return { ok: false, code: "unauthorized" };
   }
@@ -51,6 +51,7 @@ export async function registerDocumentAction(input: {
     await supabase.storage.from(siteConfig.documentBucket).remove([parsed.data.storagePath]);
     return { ok: false, code: "locked" };
   }
+  queueCustomerEmail(supabase, "document_upload_confirmed", data.id);
   revalidatePath("/", "layout");
   return { ok: true, code: "document_added", id: data.id };
 }
@@ -58,7 +59,9 @@ export async function registerDocumentAction(input: {
 export async function deleteDocumentAction(formData: FormData): Promise<ActionState> {
   const documentId = String(formData.get("documentId") ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(documentId)) return { ok: false, code: "not_found" };
-  const supabase = await createServerSupabase();
+  const session = await customerSession();
+  if (!session.ok) return { ok: false, code: session.code };
+  const { supabase } = session;
   const { data: doc } = await supabase.from("documents").select("id, storage_path").eq("id", documentId).maybeSingle();
   if (!doc) return { ok: false, code: "not_found" };
 
