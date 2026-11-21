@@ -105,6 +105,57 @@ async function main() {
         await page.close();
       }
 
+      // Service pages: the nine business services, in every language, with direction, a heading and no page errors.
+      const serviceSlugs = ["visa-consulting", "france-visa-appointment", "appointment-assistance", "visa-file-assistance", "e-visa", "flight-booking", "hotel-booking", "travel-itinerary", "transit-airport"];
+      const serviceProblems = [];
+      for (const locale of ["en", "fr", "ar"]) {
+        for (const slug of serviceSlugs) {
+          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+          const errors = [];
+          page.on("pageerror", (e) => errors.push(e.message));
+          const res = await page.goto(`${base}/${locale}/services/${slug}`, { waitUntil: "domcontentloaded" });
+          const dir = await page.getAttribute("html", "dir");
+          const h1 = await page.locator("h1").count();
+          const metaDesc = await page.getAttribute('meta[name="description"]', "content");
+          const priceOk = (await page.textContent("main")) ?? "";
+          const problems = [];
+          if (res?.status() !== 200) problems.push(`status ${res?.status()}`);
+          if ((locale === "ar") !== (dir === "rtl")) problems.push(`dir ${dir}`);
+          if (h1 !== 1) problems.push(`h1 count ${h1}`);
+          if (!metaDesc || metaDesc.length < 20) problems.push("no meta description");
+          if (/guarantee|garantis|garantie|نضمن/i.test(priceOk) === false) problems.push("no 'not promised' wording");
+          if (errors.length) problems.push(errors[0]);
+          if (problems.length) serviceProblems.push(`${locale}/${slug}: ${problems.join(", ")}`);
+          await page.close();
+        }
+      }
+      check(`all ${serviceSlugs.length} service pages render in en, fr and ar (RTL, one h1, meta description, no errors)`, serviceProblems.length === 0, serviceProblems.slice(0, 3).join(" | ") || "ok");
+
+      // An unknown slug must not show a service page. (Next streams this page after its loading boundary, so the
+      // status can be 200 with the not-found content; the content is what is checked here.)
+      const unknown = await fetch(`${base}/en/services/not-a-service`, { redirect: "manual" });
+      const unknownBody = await unknown.text();
+      check("an unknown service slug shows no service page", !unknownBody.includes("Request this service") && !unknownBody.includes("What is included"), `status ${unknown.status}`);
+
+      // Legal and trust pages in every language.
+      const legalProblems = [];
+      for (const locale of ["en", "fr", "ar"]) {
+        for (const path of ["privacy", "terms", "cookies"]) {
+          const res = await fetch(`${base}/${locale}/${path}`, { redirect: "manual" });
+          if (res.status !== 200) legalProblems.push(`${locale}/${path} ${res.status}`);
+        }
+      }
+      check("privacy, terms and cookie pages render in en, fr and ar", legalProblems.length === 0, legalProblems.join(" | ") || "ok");
+
+      // Phone width: a service page does not scroll sideways.
+      {
+        const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+        await page.goto(`${base}/fr/services/visa-consulting`, { waitUntil: "domcontentloaded" });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        check("service page has no horizontal scroll at 375px", overflow <= 1, `overflow ${overflow}px`);
+        await page.close();
+      }
+
       // Every admin page, in every locale, must send a signed-out visitor to sign-in and show no admin content.
       const routes = adminPageRoutes();
       let redirected = 0;

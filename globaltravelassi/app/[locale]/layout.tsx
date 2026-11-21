@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
+import { siteConfig } from "@/lib/config";
 
 // Rendered per request so prices, services and sign-in state are always current.
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     title: { default: dict.brand.name, template: `%s · ${dict.brand.name}` },
     description: dict.brand.tagline,
     alternates: {
-      languages: { ar: "/ar", fr: "/fr", en: "/en" },
+      languages: { ar: `${siteConfig.siteUrl}/ar`, fr: `${siteConfig.siteUrl}/fr`, en: `${siteConfig.siteUrl}/en` },
     },
     openGraph: { siteName: dict.brand.name, locale: raw === "ar" ? "ar_DZ" : raw === "fr" ? "fr_FR" : "en_GB" },
   };

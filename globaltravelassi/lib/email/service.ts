@@ -94,7 +94,7 @@ export async function deliverQueued(email: QueuedEmail, deps: EmailDeps): Promis
   return "failed";
 }
 
-/** Queues and sends the email of `kind` about one record (a request, an event, a payment or a document). */
+/** Queues and sends the email of `kind` about one record (a request, a status event or a document). */
 export async function notifyCustomer(kind: CustomerEmailKind, subjectId: string, deps: EmailDeps): Promise<DeliveryOutcome> {
   let queued: QueuedEmail | null;
   try {

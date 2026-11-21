@@ -871,3 +871,19 @@ Ten transactional emails, plus localised Supabase Auth templates. See `docs/EMAI
 ### Decision
 
 **READY_FOR_STAGING** (code), once the owner approves a staging project and the migrations 0019–0021 on it. **Not ready for production**: the logged-in flows, the migrations and email delivery have to pass on staging first (`docs/staging/STAGING_RUNBOOK.md`).
+
+
+## Final customer launch pass (local, not deployed)
+
+Baseline `5f81999`. Full report: `docs/FINAL_TECHNICAL_REPORT.md`. Decision: READY_FOR_STAGING_VALIDATION, conditional on a staging project (blocked: free-plan project limit). Production: NOT_VALIDATED.
+
+- **Payment workflow removed** from pages, actions, library, copy, statistics, reports, AI analytics and emails. Migration 0022 removes the functions and access and refuses payment emails; no payment data was deleted. 0019 is kept as history because 0022 depends on it.
+- **Migrations added:** 0022 (remove payment workflow, forward only), 0023 (CRM fields, lead source, submission tokens, rate limit, CRM activity log, append-only; additive). Rollbacks for both. Manifest regenerated.
+- **Customer site:** nine service pages with content, metadata and Open Graph; legal pages (privacy, terms, cookies) in three languages; footer and sitemap updated; WhatsApp on service, customer and admin pages.
+- **Requests:** honeypot, rate limits (hashed keys), one-time token, lead source from the server-side cookie, duplicate-safe confirmation.
+- **CRM:** lead source correction with reason, customer category, contact log, append-only activity, customer's other requests, overview statistics by group, service, language and source.
+- **Documents:** first-byte signature check; mismatched files are deleted.
+- **Email:** the nine flows plus auth; payment emails removed.
+- **Tests:** verify exit 0, 1361 passed, 3 skipped. Browser smoke 30/30. Migration sequence applies on PGlite.
+- **Dependencies:** no non-breaking fixes exist. `next` 15 and `zod` 3 advisories need major upgrades (deferred, documented).
+- **Staging:** not created. No remote database touched.

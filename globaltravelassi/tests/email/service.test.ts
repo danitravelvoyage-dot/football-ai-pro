@@ -69,8 +69,8 @@ describe("delivery", () => {
   });
 
   it("never sends the same email twice: a second trigger for the same record is a duplicate", async () => {
-    await notifyCustomer("payment_approved", "p1", deps());
-    expect(await notifyCustomer("payment_approved", "p1", deps())).toBe("duplicate");
+    await notifyCustomer("document_review_result", "p1", deps());
+    expect(await notifyCustomer("document_review_result", "p1", deps())).toBe("duplicate");
     expect(transport.sent).toHaveLength(1);
   });
 

@@ -1,67 +1,61 @@
 # GLOBALTRAVELASSI
 
-Commercial platform for **GLOBALTRAVELASSI** — visa consulting, appointment assistance, e-visa, transit and airport consulting, and organised European trips for Algeria and North Africa.
+Website, customer area and admin dashboard for GLOBALTRAVELASSI, a visa and travel assistance business. Arabic (right to left), French and English. Built with Next.js 15 (App Router) and Supabase (authentication, database, private storage).
 
-- **Languages:** Arabic (default, right-to-left), French, English. Every label, email and error message is translated.
-- **Customers:** landing pages built for TikTok traffic, a service catalogue with prices, a request form with document upload, an account and a dashboard to track each request, payments and timeline. WhatsApp is one tap away on every page.
-- **Owner / administrators:** secure login, customer accounts, applications (status, internal notes, documents, payments), services and prices, statistics and reports, Excel-compatible export.
+## What the site does
 
-Stack: Next.js 15 (App Router, TypeScript), Tailwind CSS, Supabase (Postgres, Auth, private Storage).
+- Public pages in three languages: home, nine service pages, services list, privacy notice, terms of use, cookie notice.
+- Sign-up, sign-in, password reset (Supabase Auth).
+- Customer area: create a service request, upload documents to private storage, follow the status and timeline, contact the team on WhatsApp.
+- Admin dashboard: request list with filters, request detail with status, notes, documents, CRM (lead source, customer category, contact log, internal activity), statistics, customer list, services and prices, CSV export, customer email log.
+- Ten transactional customer emails (see `docs/EMAIL_NOTIFICATIONS.md`).
 
-> Visa and entry decisions are made only by the competent authorities. The platform never promises an outcome and never records a payment unless an administrator enters it.
+There is **no payment workflow**. Prices are shown as "price on request" unless the owner sets one. There is no payment gateway, no payment proof upload and no automatic payment confirmation.
 
-## Documents
+The AI back office under `/admin/command-center` is deferred. It is not part of the launch and needs migrations 0002 to 0018, which are not applied in this launch sequence.
 
-| File | For whom |
-|---|---|
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Step-by-step set-up and going live (no programming needed) |
-| [ADMIN_GUIDE.md](ADMIN_GUIDE.md) | Day-to-day management: requests, documents, payments, prices, reports |
-| [PLAN.md](PLAN.md) | Requirements analysis and development plan |
+## Requirements
 
-## Project layout
+- Node.js 22 (the project is tested on 22.x) and npm.
+- A Supabase project (free tier is enough for staging). Nothing here needs a paid service.
 
-```
-app/[locale]/            pages: home, services, apply, auth, dashboard, admin, privacy
-app/[locale]/documents   secure document download (signed link, owner or admin only)
-app/[locale]/admin/reports/export   Excel-compatible CSV
-components/              reusable UI, forms (ActionForm keeps input on errors), admin widgets
-lib/actions/             server actions (validated, role-checked, RLS-enforced)
-lib/validation/          zod schemas and translated error messages
-lib/i18n/                ar / fr / en dictionaries (same keys enforced by tests)
-supabase/migrations/     database, row-level security and storage policies
-supabase/seed.sql        starter services (prices intentionally empty)
-tests/                   validation, translation parity, and database security tests
-middleware.ts            locale routing, session refresh, protected areas
-```
-
-## Development
+## Install and run locally
 
 ```bash
-npm install
-cp .env.example .env.local      # then fill in the public Supabase values
-npm run dev                     # http://localhost:3000 (redirects to /ar)
-npm run verify                  # lint + typecheck + tests + production build
+npm ci
+cp .env.example .env.local   # then fill in the values (see docs/ENVIRONMENT.md)
+npm run dev                  # http://localhost:3000 (redirects to /ar)
 ```
 
-`npm test` runs:
-- **Database security tests** on an embedded Postgres with the real migration: customers cannot read each other's requests, documents or internal notes; cannot promote themselves to admin; cannot approve their own request; cannot upload outside their folder; cannot upload once a request is under review; anonymous visitors see only active services.
-- **Validation tests** for phone numbers, requests, passwords, payments, uploads and services.
-- **Translation tests** that fail if Arabic or French is missing a key.
+Without Supabase variables the site still renders the public pages. Services fall back to the copy in `lib/services-content.ts`. Sign-in and the customer and admin areas need a configured project.
 
-## Security notes
+## Checks
 
-- Only the public anon key is used in the browser. The service-role key is never needed and must never be added.
-- Row-level security is enabled on every table; the admin check (`is_admin()`) runs in the database, not only in the interface.
-- Customer documents live in a **private** bucket: 10 MB limit, PDF/JPEG/PNG only, served through short-lived signed links.
-- Redirects after sign-in are restricted to same-site paths.
-- Security headers: frame denial, `nosniff`, referrer policy, restricted permissions.
-- Supabase's built-in auth rate limiting protects sign-in and sign-up. Add a Vercel/Cloudflare firewall rule for extra protection if traffic grows.
+```bash
+npm run verify        # lint, typecheck, unit and database tests (PGlite), production build
+npm run test:browser  # after a build: smoke test of the production server (needs Chromium)
+```
 
-## Known limits (deliberate)
+`verify` does not contact any database or send any email. The database tests run on an in-memory Postgres (PGlite).
 
-- No online card or mobile-payment gateway: payments are recorded by an administrator after money is received (cash, bank transfer, CCP, BaridiMob).
-- Email notifications are limited to Supabase's account emails (confirmation, password reset). Status updates reach customers through the dashboard and WhatsApp.
+## Database
+
+Apply the migrations to a Supabase project in the order in `docs/MIGRATIONS.md`. The customer launch uses `0001`, the base seed, `0019` to `0023`, and `seed_catalog.sql`. Migrations `0002` to `0018` belong to the deferred AI back office and are not needed for the launch.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| `docs/ENVIRONMENT.md` | Every environment variable, what it is for, and whether it is secret |
+| `docs/MIGRATIONS.md` | Migration order, dependencies, rollbacks, what is payment-related |
+| `docs/EMAIL_NOTIFICATIONS.md` | Email flows, SMTP setup, Supabase auth templates |
+| `docs/PRIVACY_AND_COOKIES.md` | What personal data is held, and the cookies the site sets |
+| `docs/ADMIN_GUIDE.md` | Day-to-day use of the admin dashboard |
+| `docs/staging/STAGING_RUNBOOK.md` | Staging setup and validation steps |
+| `docs/LAUNCH_CHECKLIST.md` | Production launch checklist |
+| `docs/FINAL_TECHNICAL_REPORT.md` | Status, tests, risks and open items |
+| `docs/security/` | Redirect and Content-Security-Policy design |
 
 ## Deployment
 
-Vercel builds this project from branch `claude/affectionate-rubin-la5937`, Root Directory `globaltravelassi`. See DEPLOYMENT.md.
+Read `DEPLOYMENT.md`. Staging comes first (`docs/staging/STAGING_RUNBOOK.md`). Production only after staging validation and the owner's approval.

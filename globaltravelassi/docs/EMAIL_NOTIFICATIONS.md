@@ -1,25 +1,24 @@
 # Customer email notifications
 
-Status: **implemented and tested locally. Not live.** Needs migrations 0020 and 0021 applied (owner approval), SMTP settings on the server, and `EMAIL_DELIVERY_ENABLED=true`. Until then, nothing is sent and every email is recorded as skipped.
+Status: **implemented and tested locally. Not live.** Needs migrations 0020 to 0023 applied on the target project (owner approval), SMTP settings on the server, and `EMAIL_DELIVERY_ENABLED=true`. Until then, nothing is sent and every email is recorded as skipped.
 
 ## Flows
 
+These are the only customer emails the site sends. Authentication emails (sign-up confirmation and password reset) come from Supabase Auth.
+
 | Email | Trigger | Sent by | Language |
 |---|---|---|---|
-| Registration confirmation | Sign-up | Supabase Auth (`supabase/templates/confirmation.html`) | `locale` saved at sign-up; all three languages if missing |
-| Password reset | "Forgot password" | Supabase Auth (`supabase/templates/recovery.html`) | Same |
-| Request received | Customer submits a request | App, `createApplicationAction` | Language of the request |
-| Status updated | Owner sets in review, submitted, completed or cancelled | App, `updateStatusAction` | Language of the request |
-| Additional documents requested | Owner sets "documents required" | Same | Same |
-| Request approved | Owner sets "approved" | Same | Same |
-| Request rejected | Owner sets "rejected" | Same | Same |
-| Payment proof received | Customer submits a proof | App, `submitPaymentEvidenceAction` | Same |
-| Payment approved | Owner confirms funds received | App, `decidePaymentAction` | Same |
-| Payment rejected | Owner rejects a proof | Same | Same |
-| Document upload confirmed | Customer uploads a document | App, `registerDocumentAction` | Same |
-| Document review result | Owner marks a document checked or unchecked | App, `setDocumentVerifiedAction` | Same |
+| Registration confirmation | Sign-up | Supabase Auth (`supabase/templates/confirmation.html`) | language saved at sign-up; all three if missing |
+| Password reset | "Forgot password" | Supabase Auth (`supabase/templates/recovery.html`) | same |
+| Service request received | Customer submits a request | app, `createApplicationAction` | the request's language |
+| Request status updated | Owner sets in review, submitted, completed or cancelled | app, `updateStatusAction` | same |
+| Additional documents requested | Owner sets "documents required" | same | same |
+| Request approved | Owner sets "approved" | same | same |
+| Request rejected | Owner sets "rejected" | same | same |
+| Document received | Customer uploads a document | app, `registerDocumentAction` | same |
+| Document review result | Owner marks a document checked or unchecked | app, `setDocumentVerifiedAction` | same |
 
-No email is sent when the owner sets "payment pending" by hand: that is now refused, because only a proof submission sets it.
+All payment emails were removed. Migration `0022` also refuses any new payment email at the database level. Old payment rows stay in the log for history, and the admin email page hides them.
 
 ## How it works
 
@@ -28,7 +27,7 @@ No email is sent when the owner sets "payment pending" by hand: that is now refu
    - checks who may send it: the request's owner (active account) for customer-triggered kinds, the business owner for the rest;
    - computes the dedupe key from the kind and the record (for document reviews, also the checked state). A second trigger returns nothing, so **an email is never sent twice**;
    - takes the recipient from `profiles.email` (the sign-in account), never from the caller or the request form;
-   - builds the template data from customer-visible fields only. Internal notes, the owner's internal payment reason, file paths and the owner's identity are never copied.
+   - builds the template data from customer-visible fields only. Internal notes, internal reasons, file paths and the owner's identity are never copied.
 3. `lib/email/service.ts` checks the recipient, renders the email, sends it through `lib/email/transport.ts` (nodemailer, SMTP), and records `sent` or `failed` with a short error code (`auth_failed`, `timeout`, `connection_failed`, `recipient_rejected`, `temporary_failure`, `send_failed`). Provider messages are never stored, because they can contain addresses or server details.
 4. If delivery is off or SMTP is incomplete, the email is recorded as `skipped` / `not_configured`. Nothing is ever recorded as sent without a successful SMTP send.
 
@@ -43,7 +42,6 @@ No email is sent when the owner sets "payment pending" by hand: that is now refu
 - `lib/email/copy.ts` holds the wording in Arabic, French and English. `lib/email/templates.ts` builds the subject, the HTML and the plain text.
 - The HTML is a single 600px column that shrinks on phones, with inline styles only, no images and no tracking. Arabic is laid out right to left (`dir="rtl"`, right-aligned).
 - Every value is HTML-escaped. Subjects are reduced to one line, so no header can be injected.
-- A proof email says it is **not yet a confirmation**. Only the owner's decision confirms a payment.
 
 ## Configuration
 
@@ -85,12 +83,12 @@ The templates were executed with Go's `html/template`, the engine Supabase uses,
 - `tests/email/templates.test.ts`: every kind in every language, escaping, header safety, no internal fields, links, wording parity.
 - `tests/email/service.test.ts`: duplicates, invalid recipient, delivery off, failure codes, a throwing transport, a database outage, concurrent retries, the five-attempt cap.
 - `tests/email/config-transport.test.ts`: off by default, missing variables reported by name only, TLS settings, error codes without provider text.
-- `tests/db/customer-hardening-emails.test.ts`: the SQL rules on PGlite (recipient, language, dedupe, permissions, customer-visible content only, append-only log, retry claim, deleted requests).
-- `tests/actions/customer-email-wiring.test.ts` and `tests/actions/payments-actions.test.ts`: which action queues which email.
+- `tests/db/customer-hardening-emails.test.ts` and `tests/db/payment-removal-crm.test.ts`: the SQL rules on PGlite (recipient, language, dedupe, permissions, customer-visible content only, append-only log, retry claim, payment emails refused).
+- `tests/actions/customer-email-wiring.test.ts`: which action queues which email.
 
 ## Not done or not verified
 
 - **No real email has been sent.** No SMTP account was configured, and none should be until you choose a provider. Delivery to real inboxes, spam placement and rendering in Gmail and Outlook are not verified.
 - The SQL functions ran on PGlite, not on a Supabase project.
 - No scheduled automatic retry. Retries are manual, from the admin page.
-- Customers cannot opt out of these emails. They are transactional, about their own requests, but check the rules for your market.
+- Customers cannot opt out of these emails. They are transactional and about their own requests. The owner should confirm this against the rules for the target market.

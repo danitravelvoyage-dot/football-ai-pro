@@ -23,8 +23,8 @@ function functionsWithDelete(sql: string): string[] {
 }
 
 describe("migration history", () => {
-  it("is numbered in order with no gaps from 0001 to 0021", () => {
-    expect(files.map((f) => f.slice(0, 4))).toEqual(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021"]);
+  it("is numbered in order with no gaps from 0001 to 0023", () => {
+    expect(files.map((f) => f.slice(0, 4))).toEqual(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023"]);
   });
 
   it("migrations 0003 onward never drop a table, drop a column, truncate or delete data", () => {

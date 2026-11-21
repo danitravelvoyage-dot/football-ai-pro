@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { siteConfig } from "@/lib/config";
 import { documentSchema } from "@/lib/validation/schemas";
 import { parseWith } from "./helpers";
+import { detectDocumentMime } from "@/lib/documents/signature";
 import type { ActionState } from "./types";
 import { customerSession } from "./customer-session";
 import { queueCustomerEmail } from "@/lib/email/notify";
@@ -32,6 +33,19 @@ export async function registerDocumentAction(input: {
     return { ok: false, code: "unauthorized" };
   }
 
+  // The bytes decide the type. A file whose content is not the declared PDF, JPEG or PNG is removed, not stored.
+  const { data: blob, error: downloadError } = await supabase.storage.from(siteConfig.documentBucket).download(parsed.data.storagePath);
+  if (downloadError || !blob) {
+    await supabase.storage.from(siteConfig.documentBucket).remove([parsed.data.storagePath]);
+    return { ok: false, code: "generic" };
+  }
+  const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  const actual = detectDocumentMime(head);
+  if (!actual || actual !== parsed.data.mimeType) {
+    await supabase.storage.from(siteConfig.documentBucket).remove([parsed.data.storagePath]);
+    return { ok: false, code: "invalid_file" };
+  }
+
   const { data, error } = await supabase
     .from("documents")
     .insert({
@@ -40,7 +54,7 @@ export async function registerDocumentAction(input: {
       doc_type: parsed.data.docType,
       storage_path: parsed.data.storagePath,
       file_name: parsed.data.fileName,
-      mime_type: parsed.data.mimeType,
+      mime_type: actual,
       size_bytes: parsed.data.sizeBytes,
     })
     .select("id")

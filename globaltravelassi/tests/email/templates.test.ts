@@ -19,9 +19,6 @@ const sample: Record<string, Partial<EmailTemplateData>> = {
   additional_documents_requested: { status: "documents_required", message: "Please add a bank statement." },
   application_approved: { status: "approved" },
   application_rejected: { status: "rejected", message: "The file is incomplete." },
-  payment_proof_received: { amount: "15000.00", currency: "DZD", method: "baridimob" },
-  payment_approved: { amount: "15000.00", currency: "DZD", method: "usdt" },
-  payment_rejected: { amount: "15000.00", currency: "DZD", method: "redotpay", message: "The amount does not match." },
   document_upload_confirmed: { doc_type: "passport" },
   document_review_result: { doc_type: "passport", verified: true },
 };
@@ -81,11 +78,6 @@ describe("customer email templates", () => {
     }
   });
 
-  it("never calls a submitted proof a confirmed payment", () => {
-    const out = renderCustomerEmail("payment_proof_received", "en", { ...base, ...sample.payment_proof_received }, SITE, "B");
-    expect(out.text).toMatch(/not yet a confirmation/);
-    expect(out.subject).not.toMatch(/confirmed/i);
-  });
 
   it("picks the accepted or the needs-attention wording for a document review", () => {
     const ok = renderCustomerEmail("document_review_result", "en", { ...base, doc_type: "passport", verified: true }, SITE, "B");
@@ -119,8 +111,7 @@ describe("which email a status change sends", () => {
     expect(statusEmailKind("approved")).toBe("application_approved");
     expect(statusEmailKind("rejected")).toBe("application_rejected");
     for (const s of ["in_review", "submitted", "completed", "cancelled"] as const) expect(statusEmailKind(s)).toBe("application_status_updated");
-    expect(statusEmailKind("payment_pending")).toBeNull();
     expect(statusEmailKind("new")).toBeNull();
-    expect(applicationStatuses.length).toBe(9);
+    expect(applicationStatuses.length).toBe(8);
   });
 });

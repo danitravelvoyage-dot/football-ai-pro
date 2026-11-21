@@ -1,4 +1,4 @@
-import { getDictionary, formatMoney, isLocale, type Locale } from "@/lib/i18n";
+import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { emailText, type EmailCopy } from "./copy";
 import type { CustomerEmailKind, EmailTemplateData } from "./kinds";
 
@@ -60,13 +60,11 @@ export function renderCustomerEmail(kind: CustomerEmailKind, rawLocale: string, 
 
   const service = (locale === "ar" ? data.service_title_ar : locale === "fr" ? data.service_title_fr : data.service_title_en) || data.service_title_en || "";
   const statusLabel = data.status ? (dict.statuses as Record<string, string>)[data.status] ?? "" : "";
-  const amount = data.amount && data.currency ? formatMoney(data.amount, data.currency, locale) : "";
-  const method = data.method ? (dict.paymentMethods as Record<string, string>)[data.method] ?? "" : "";
   const docLabel = data.doc_type ? (dict.docTypes as Record<string, string>)[data.doc_type] ?? "" : "";
   const name = oneLine(data.customer_name || "", 120);
   const reference = oneLine(data.reference || "", 40);
 
-  const values = { name, ref: reference, service: oneLine(service, 120), status: statusLabel, amount, method, doc: docLabel };
+  const values = { name, ref: reference, service: oneLine(service, 120), status: statusLabel, doc: docLabel };
   const subject = oneLine(`${fill(copy.subject, values)} · ${brand}`, 180);
   const heading = fill(copy.heading, values);
   const paragraphs = copy.body.map((p) => fill(p, values));
@@ -77,8 +75,6 @@ export function renderCustomerEmail(kind: CustomerEmailKind, rawLocale: string, 
   const details: [string, string][] = [[chrome.reference, reference]];
   if (service) details.push([chrome.service, values.service]);
   if (statusLabel) details.push([chrome.status, statusLabel]);
-  if (amount) details.push([chrome.amount, amount]);
-  if (method) details.push([chrome.method, method]);
   if (docLabel) details.push([chrome.document, docLabel]);
 
   // ---- plain text ----

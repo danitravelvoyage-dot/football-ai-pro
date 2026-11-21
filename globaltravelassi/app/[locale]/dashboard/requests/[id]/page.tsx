@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDictionary, isLocale, formatDate, formatDateTime, formatMoney, countryName, type Locale } from "@/lib/i18n";
+import { getDictionary, isLocale, formatDate, formatDateTime, countryName, type Locale } from "@/lib/i18n";
 import { requireCustomer } from "@/lib/auth";
-import { getApplicationWithService, getDocumentsFor, getPaymentsFor, getTimelineFor } from "@/lib/queries";
+import { getApplicationWithService, getDocumentsFor, getTimelineFor } from "@/lib/queries";
 import { serviceTitle } from "@/lib/catalog";
-import { documentsEditableStatuses, type ApplicationStatus } from "@/lib/domain";
+import { documentsEditableStatuses, normalizeStatus, type ApplicationStatus } from "@/lib/domain";
 import { formMessages } from "@/lib/validation/messages";
 import { deleteDocumentAction } from "@/lib/actions/documents";
 import { whatsappLink } from "@/lib/config";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { DocumentUploader } from "@/components/DocumentUploader";
-import { PaymentPanel } from "@/components/payments/PaymentPanel";
-import { loadPaymentMethodSettings } from "@/lib/payments/load";
-import { isOpenForPayment, offeredMethods } from "@/lib/payments/rules";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Alert, Badge, Card, ButtonLink } from "@/components/ui";
 
@@ -44,36 +41,15 @@ export default async function RequestPage({
       </Card>
     );
   }
-  const [documents, payments, timeline] = await Promise.all([getDocumentsFor(id), getPaymentsFor(id), getTimelineFor(id)]);
-  const status = app.status as ApplicationStatus;
-  const editable = documentsEditableStatuses.includes(status);
-  const wa = whatsappLink(`${app.reference}`);
+  const [documents, timeline] = await Promise.all([getDocumentsFor(id), getTimelineFor(id)]);
+  const status = normalizeStatus(app.status);
+  const editable = documentsEditableStatuses.includes(status as ApplicationStatus);
+  const wa = whatsappLink(`${dict.dashboard.whatsappMessage} ${app.reference}`);
   const typeLabels = dict.docTypes as Record<string, string>;
-  const mp = dict.manualPayments;
-  const paid = payments.some((p) => p.status === "received");
-  const proofWaiting = payments.some((p) => p.status === "pending_review");
-  const showPayment = isOpenForPayment(status) && !paid && Boolean(app.services?.price);
-  const offered = showPayment
-    ? offeredMethods(await loadPaymentMethodSettings(), locale).map((m) => ({
-        method: m.method,
-        label: dict.paymentMethods[m.method],
-        instructions: m.instructions,
-      }))
-    : [];
 
   const eventText = (e: (typeof timeline)[number]) => {
     if (e.kind === "created") return dict.apply.successTitle;
-    if (e.kind === "status" && e.to_status) return `${dict.statuses[e.to_status]}${e.message ? ` — ${e.message}` : ""}`;
-    if (e.kind === "payment") {
-      // Proof and decision events are written by the database in English; show them in the visitor's language. A
-      // rejection keeps the message the team wrote for the customer.
-      const ce = dict.customerEmails;
-      const to = e.to_status as string | null;
-      if (to === "payment_pending") return ce.timelineProofSubmitted;
-      if (to === "received") return ce.timelinePaymentConfirmed;
-      if (to === "rejected") return `${ce.timelineProofRejected}${e.message ? ` — ${e.message}` : ""}`;
-      return `${dict.dashboard.payments}: ${e.message}`;
-    }
+    if (e.kind === "status" && e.to_status) return `${dict.statuses[normalizeStatus(e.to_status)]}${e.message ? ` — ${e.message}` : ""}`;
     return e.message || dict.common.none;
   };
 
@@ -84,7 +60,7 @@ export default async function RequestPage({
       <header className="flex flex-col gap-4 rounded-[2rem] bg-navy-950 p-6 text-white sm:flex-row sm:items-center sm:justify-between sm:p-10">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold-400">{dict.dashboard.reference}</p>
-          <p className="mt-2 font-mono text-2xl font-semibold">{app.reference}</p>
+          <p className="mt-2 font-mono text-2xl font-semibold" dir="ltr">{app.reference}</p>
           <p className="mt-2 text-navy-200">{app.services ? serviceTitle(app.services, locale) : ""}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -93,12 +69,11 @@ export default async function RequestPage({
         </div>
       </header>
 
-      {created === "1" && <Alert tone="success">{dict.apply.successTitle}. {dict.apply.successText} {app.reference}. {dict.apply.uploadHint}</Alert>}
+      {created === "1" && <Alert tone="success">{dict.apply.successTitle}. {dict.apply.successText} <span dir="ltr" className="font-mono">{app.reference}</span>. {dict.apply.uploadHint}</Alert>}
       {status === "documents_required" && <Alert tone="warning">{dict.dashboard.waitingDocs}</Alert>}
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="space-y-8 lg:col-span-2">
-          {/* Documents */}
           <Card>
             <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.documents}</h2>
             {documents.length === 0 ? (
@@ -127,7 +102,6 @@ export default async function RequestPage({
             )}
           </Card>
 
-          {/* Upload */}
           <Card>
             <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.uploadTitle}</h2>
             <p className="mt-2 text-sm text-navy-600">{dict.apply.uploadHint}</p>
@@ -156,73 +130,14 @@ export default async function RequestPage({
             </div>
           </Card>
 
-          {/* Payment: the amount, the offered methods and the proof */}
-          {(showPayment || paid) && (
-            <Card>
-              <h2 className="font-display text-2xl text-navy-900">{mp.title}</h2>
-              {paid ? (
-                <Alert tone="success">{mp.paid}</Alert>
-              ) : proofWaiting ? (
-                <div className="mt-4"><Alert tone="info">{dict.customerEmails.proofWaiting}</Alert></div>
-              ) : (
-                <>
-                  <p className="mt-2 text-sm text-navy-600">{mp.hint}</p>
-                  <div className="mt-5">
-                    <PaymentPanel
-                      applicationId={id}
-                      userId={user.id}
-                      amountText={formatMoney(app.services!.price!, app.services!.currency, locale)}
-                      methods={offered}
-                      labels={mp}
-                    />
-                  </div>
-                </>
-              )}
-            </Card>
-          )}
-
-          {/* Payments */}
           <Card>
-            <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.payments}</h2>
-            <p className="mt-2 text-sm text-navy-600">{dict.dashboard.paymentNote}</p>
-            {payments.length === 0 ? (
-              <p className="mt-5 text-sm text-navy-600">{dict.dashboard.noPayments}</p>
-            ) : (
-              <div className="mt-5 overflow-x-auto">
-                <table className="w-full min-w-[32rem] text-start text-sm">
-                  <thead className="text-navy-500">
-                    <tr>
-                      <th className="py-2 text-start font-semibold">{dict.dashboard.paymentAmount}</th>
-                      <th className="py-2 text-start font-semibold">{dict.dashboard.paymentMethod}</th>
-                      <th className="py-2 text-start font-semibold">{dict.dashboard.paymentStatus}</th>
-                      <th className="py-2 text-start font-semibold">{dict.dashboard.paymentDate}</th>
-                      <th className="py-2 text-start font-semibold">{dict.dashboard.paymentRef}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-navy-100">
-                    {payments.map((p) => (
-                      <tr key={p.id}>
-                        <td className="py-3 font-semibold text-navy-900">{formatMoney(p.amount, p.currency, locale)}</td>
-                        <td className="py-3">{dict.paymentMethods[p.method]}</td>
-                        <td className="py-3">
-                          {dict.paymentStatuses[p.status]}
-                          {p.status === "rejected" && p.customer_visible_rejection_message && (
-                            <span className="mt-1 block text-xs leading-relaxed text-rose-800">{mp.rejectionNote}: {p.customer_visible_rejection_message}</span>
-                          )}
-                        </td>
-                        <td className="py-3">{formatDate(p.received_at, locale)}</td>
-                        <td className="py-3" dir="ltr">{p.reference || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.contactTitle}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-navy-600">{dict.dashboard.contactText}</p>
+            {wa && <div className="mt-5"><ButtonLink href={wa} external variant="whatsapp">{dict.nav.whatsapp}</ButtonLink></div>}
           </Card>
         </div>
 
         <aside className="space-y-8">
-          {/* Timeline */}
           <Card>
             <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.timeline}</h2>
             {timeline.length === 0 ? (
@@ -240,7 +155,6 @@ export default async function RequestPage({
             )}
           </Card>
 
-          {/* Details */}
           <Card>
             <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.requestInfo}</h2>
             <dl className="mt-5 space-y-4 text-sm">

@@ -1,6 +1,6 @@
 // Single source of truth for enumerations. The database CHECK constraints use the same values.
 export const applicationStatuses = [
-  "new", "in_review", "documents_required", "submitted", "approved", "rejected", "completed", "cancelled", "payment_pending",
+  "new", "in_review", "documents_required", "submitted", "approved", "rejected", "completed", "cancelled",
 ] as const;
 export type ApplicationStatus = (typeof applicationStatuses)[number];
 
@@ -13,15 +13,17 @@ export const documentTypes = [
 ] as const;
 export type DocumentType = (typeof documentTypes)[number];
 
-export const paymentMethods = ["cash", "bank_transfer", "ccp", "baridimob", "other", "usdt", "redotpay"] as const;
+/** Lead sources recorded on each request. "direct" and "other" are used when the source cannot be identified. */
+export const leadSources = ["tiktok", "instagram", "facebook", "google", "whatsapp", "direct", "other"] as const;
+export type LeadSource = (typeof leadSources)[number];
 
-/** The methods a client can choose. Each one is offered only when the owner enables it, with instructions. */
-export const selfServicePaymentMethods = ["usdt", "baridimob", "redotpay"] as const;
-export type SelfServicePaymentMethod = (typeof selfServicePaymentMethods)[number];
-export type PaymentMethod = (typeof paymentMethods)[number];
+export const customerCategories = ["standard", "priority", "returning", "corporate"] as const;
+export type CustomerCategory = (typeof customerCategories)[number];
 
-export const paymentStatuses = ["pending", "received", "cancelled", "pending_review", "rejected"] as const;
-export type PaymentStatus = (typeof paymentStatuses)[number];
+export const contactChannels = ["whatsapp", "email", "phone", "in_person", "other"] as const;
+export type ContactChannel = (typeof contactChannels)[number];
+
+export const siteLocales = ["ar", "fr", "en"] as const;
 
 export const currencies = ["DZD", "EUR", "USD"] as const;
 export type Currency = (typeof currencies)[number];
@@ -65,6 +67,13 @@ export interface ApplicationRow {
   additional_info: string;
   status: ApplicationStatus;
   source: string | null;
+  locale: "ar" | "fr" | "en";
+  lead_source: LeadSource | null;
+  lead_source_detail: string | null;
+  lead_source_corrected_at: string | null;
+  customer_category: CustomerCategory;
+  last_contacted_at: string | null;
+  last_contact_channel: ContactChannel | null;
   created_at: string;
   updated_at: string;
 }
@@ -80,26 +89,6 @@ export interface DocumentRow {
   size_bytes: number;
   verified: boolean;
   created_at: string;
-}
-
-export interface PaymentRow {
-  id: string;
-  application_id: string;
-  amount: string | number;
-  currency: Currency;
-  method: PaymentMethod;
-  status: PaymentStatus;
-  reference: string;
-  note: string;
-  received_at: string | null;
-  created_at: string;
-  /** Owner-side fields. Legacy and owner-recorded payments have none; customers never receive these (see customer_payments). */
-  evidence_path?: string | null;
-  submitted_at?: string | null;
-  verified_by?: string | null;
-  verified_at?: string | null;
-  decision_reason?: string | null;
-  customer_visible_rejection_message?: string | null;
 }
 
 export interface ProfileRow {
@@ -128,4 +117,13 @@ export interface NoteRow {
   author_id: string | null;
   body: string;
   created_at: string;
+}
+
+/**
+ * Requests created before the payment workflow was removed can still hold the old status. It is shown as "approved",
+ * which is what it meant: the customer had been accepted to proceed. Nothing is rewritten in the database.
+ */
+export function normalizeStatus(status: string): ApplicationStatus {
+  if (status === "payment_pending") return "approved";
+  return (applicationStatuses as readonly string[]).includes(status) ? (status as ApplicationStatus) : "new";
 }

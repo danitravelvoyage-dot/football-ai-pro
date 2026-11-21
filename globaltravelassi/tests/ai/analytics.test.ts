@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketOf, bucketsEndingAt, rate, approvalConversion, contentPerformance, agentPerformance, leadConversion, revenueTracking, executionCost } from "@/lib/ai/analytics/engine";
+import { bucketOf, bucketsEndingAt, rate, approvalConversion, contentPerformance, agentPerformance, leadConversion, executionCost } from "@/lib/ai/analytics/engine";
 
 const NOW = new Date("2026-11-21T12:00:00.000Z"); // a Saturday
 
@@ -75,23 +75,7 @@ describe("agents and leads", () => {
   });
 });
 
-describe("revenue and cost", () => {
-  it("revenue is what was received, per currency; pending money is shown apart and not counted", () => {
-    const r = revenueTracking(
-      [
-        { amount: 1000, currency: "DZD", status: "received", receivedAt: "2026-11-10T00:00:00.000Z" },
-        { amount: 500, currency: "DZD", status: "received", receivedAt: "2026-11-18T00:00:00.000Z" },
-        { amount: 900, currency: "EUR", status: "pending", receivedAt: null },
-        { amount: 700, currency: "DZD", status: "cancelled", receivedAt: null },
-      ],
-      NOW,
-      "monthly",
-    );
-    expect(r.receivedByCurrency).toEqual({ DZD: 1500 });
-    expect(r.pendingByCurrency).toEqual({ EUR: 900 });
-    expect(r.byPeriod.at(-1)?.received).toEqual({ DZD: 1500 });
-  });
-
+describe("execution cost", () => {
   it("execution cost is null for an unpriced provider and for the total while any provider is unpriced", () => {
     const usage = [
       { providerId: "local", day: "2026-11-20", tokensIn: 2000, tokensOut: 1000, requests: 3 },

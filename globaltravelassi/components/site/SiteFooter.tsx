@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Dict } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n/config";
 import { Logo } from "@/components/ui";
-import { whatsappLink } from "@/lib/config";
+import { siteConfig, whatsappLink } from "@/lib/config";
 
 export function SiteFooter({ locale, dict }: { locale: Locale; dict: Dict }) {
   const wa = whatsappLink();
@@ -16,6 +16,9 @@ export function SiteFooter({ locale, dict }: { locale: Locale; dict: Dict }) {
         <div className="text-sm">
           <p className="font-semibold text-white">{dict.footer.contact}</p>
           <p className="mt-3 text-navy-300">{dict.footer.address}</p>
+          {siteConfig.contactEmail && (
+            <a href={`mailto:${siteConfig.contactEmail}`} className="mt-3 block break-all text-gold-300 hover:text-gold-400" dir="ltr">{siteConfig.contactEmail}</a>
+          )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-gold-300 hover:text-gold-400">
               {dict.footer.whatsapp} →
@@ -25,8 +28,10 @@ export function SiteFooter({ locale, dict }: { locale: Locale; dict: Dict }) {
         <div className="text-sm">
           <p className="font-semibold text-white">{dict.footer.legal}</p>
           <ul className="mt-3 space-y-2 text-navy-300">
-            <li><Link href={`/${locale}/privacy`} className="hover:text-gold-300">{dict.privacy.title}</Link></li>
             <li><Link href={`/${locale}/services`} className="hover:text-gold-300">{dict.nav.services}</Link></li>
+            <li><Link href={`/${locale}/privacy`} className="hover:text-gold-300">{dict.legal.privacyLabel}</Link></li>
+            <li><Link href={`/${locale}/terms`} className="hover:text-gold-300">{dict.legal.termsLabel}</Link></li>
+            <li><Link href={`/${locale}/cookies`} className="hover:text-gold-300">{dict.legal.cookiesLabel}</Link></li>
           </ul>
         </div>
       </div>

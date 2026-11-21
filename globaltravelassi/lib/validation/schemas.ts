@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  applicationStatuses, currencies, documentTypes, employmentStatuses, paymentMethods, paymentStatuses,
+  applicationStatuses, contactChannels, currencies, customerCategories, documentTypes, employmentStatuses, leadSources,
   serviceCategories,
 } from "@/lib/domain";
 import { isCountryCode } from "@/lib/countries";
@@ -94,24 +94,27 @@ export const statusSchema = z.object({
   message: text(300),
 });
 
+/** The owner's correction of a lead source. The reason is recorded with the change. */
+export const leadSourceSchema = z.object({
+  applicationId: uuid,
+  leadSource: oneOf(leadSources),
+  reason: text(300, 3),
+});
+
+export const customerCategorySchema = z.object({
+  applicationId: uuid,
+  category: oneOf(customerCategories),
+});
+
+export const contactSchema = z.object({
+  applicationId: uuid,
+  channel: oneOf(contactChannels),
+  note: text(300),
+});
+
 export const noteSchema = z.object({
   applicationId: uuid,
   body: text(2000, 1),
-});
-
-export const paymentSchema = z.object({
-  applicationId: uuid,
-  amount: z
-    .string()
-    .trim()
-    .transform((value) => Number(value.replace(",", ".").replace(/\s/g, "")))
-    .refine((value) => Number.isFinite(value) && value > 0 && value <= 100_000_000, "invalid_option"),
-  currency: oneOf(currencies),
-  method: oneOf(paymentMethods),
-  status: oneOf(paymentStatuses),
-  reference: text(100),
-  note: text(500),
-  receivedOn: dateString,
 });
 
 const optionalPrice = z

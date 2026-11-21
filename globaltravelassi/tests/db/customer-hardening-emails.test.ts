@@ -157,23 +157,6 @@ describe("0021: queueing customer emails", () => {
     expect(JSON.stringify(rows[0])).not.toContain("INTERNAL-NOTE-123");
   });
 
-  it("puts the message written for the customer in a payment rejection, never the owner's internal reason", async () => {
-    await db.exec(`update public.applications set status = 'approved' where id = '${aliceApp}';
-      insert into public.payment_method_settings (method, enabled, instructions_fr, instructions_en, instructions_ar)
-        values ('usdt', true, 'fr', 'en', 'ar') on conflict (method) do update set enabled = true, instructions_fr = 'fr', instructions_en = 'en', instructions_ar = 'ar';`);
-    const pay = await db.query<{ id: string }>(`insert into public.payments (application_id, amount, currency, method, status, evidence_path, evidence_mime, evidence_size, submitted_at, submitted_by)
-      values ('${aliceApp}', 15000, 'DZD', 'usdt', 'pending_review', '${ALICE}/${aliceApp}/payment-1.pdf', 'application/pdf', 100, now(), '${ALICE}') returning id`);
-    const payId = pay.rows[0]!.id;
-    const proof = await enqueue(ALICE, "payment_proof_received", payId);
-    expect(proof[0]!.email_data).toMatchObject({ amount: "15000.00", currency: "DZD", method: "usdt" });
-    await expectDenied(enqueue(ADMIN, "payment_rejected", payId), /does not match/); // not decided yet
-    await asUser(db, ADMIN, `select public.decide_payment('${payId}', 'reject', 'INTERNAL-REASON-XYZ', 'Le montant ne correspond pas')`);
-    const rows = await enqueue(ADMIN, "payment_rejected", payId);
-    expect(rows[0]!.email_data).toMatchObject({ message: "Le montant ne correspond pas" });
-    expect(JSON.stringify(rows[0])).not.toContain("INTERNAL-REASON-XYZ");
-    expect(JSON.stringify(rows[0])).not.toContain("payment-1.pdf");
-  });
-
   it("queues one review email per document and verification state", async () => {
     const doc = await db.query<{ id: string }>(`select id from public.documents where application_id = '${aliceApp}' limit 1`);
     const docId = doc.rows[0]!.id;

@@ -4,7 +4,7 @@ import { en } from "@/lib/i18n/en";
 import { fr } from "@/lib/i18n/fr";
 import { formatMoney, countryName, formatDate } from "@/lib/i18n";
 import { locales, textDirection, isLocale } from "@/lib/i18n/config";
-import { applicationStatuses, documentTypes, paymentMethods, paymentStatuses, employmentStatuses, serviceCategories } from "@/lib/domain";
+import { applicationStatuses, documentTypes, employmentStatuses, serviceCategories, leadSources, customerCategories } from "@/lib/domain";
 
 /** Every key present in English must exist, non-empty, in Arabic and French (and nothing extra). */
 function keyPaths(value: unknown, prefix = ""): string[] {
@@ -33,12 +33,13 @@ describe("translations", () => {
     }
   });
 
-  it("every status, document type, payment option and category has a label in every language", () => {
+  it("every status, document type, lead source, customer category and service category has a label in every language", () => {
     for (const dict of [en, fr, ar]) {
       expect(Object.keys(dict.statuses).sort()).toEqual([...applicationStatuses].sort());
       expect(Object.keys(dict.docTypes).sort()).toEqual([...documentTypes].sort());
-      expect(Object.keys(dict.paymentMethods).sort()).toEqual([...paymentMethods].sort());
-      expect(Object.keys(dict.paymentStatuses).sort()).toEqual([...paymentStatuses].sort());
+      expect(Object.keys(dict.crm.leadSources).sort()).toEqual([...leadSources, "not_recorded"].sort());
+      expect(Object.keys(dict.crm.categories).sort()).toEqual([...customerCategories].sort());
+      expect(Object.keys(dict.langNames).sort()).toEqual(["ar", "en", "fr"]);
       expect(Object.keys(dict.employment).sort()).toEqual([...employmentStatuses].sort());
       expect(Object.keys(dict.categories).sort()).toEqual([...serviceCategories].sort());
     }

@@ -22,9 +22,13 @@
     "supabase/migrations/0019_manual_payments.sql": "5d7bb91f078d68f7a624ccfa89dd1b80fff59dff39707f35e4f5cabd7d22f29d",
     "supabase/migrations/0020_customer_hardening.sql": "e4c52cb9544e53ae42702a9d9cfc2d887a49b32ebd49bebab3449a6dddc35e1e",
     "supabase/migrations/0021_customer_email_notifications.sql": "9f2a9efba4aa383a9b516e9066b720dfc89a7603a44f0ee0b2d1712e800beb02",
+    "supabase/migrations/0022_remove_payment_workflow.sql": "c9f01b7c548889117efe7a361be386a61174a321be57fc9be7cd4ff75870f755",
+    "supabase/migrations/0023_crm_attribution_requests.sql": "904371d61cd5230ee436a9fb70f185f8ef0b84d4dc922ddab9caf051ab2d398b",
     "docs/migrations/0018_rollback.sql": "92a6f597a036938dead334a52e29f41d56a09c6d45bad7b29eb41487c91330bf",
     "docs/migrations/0019_rollback.sql": "9ad0cdeba26accedecedab7213ec0185ccd6a3f39e6b224f65648baa625a36a6",
     "docs/migrations/0020_rollback.sql": "865baec40236d9c76218d6180c0ff1bf752dd990b22ca384090aeca6a1fe56d0",
-    "docs/migrations/0021_rollback.sql": "39dc7ccc60775eeb7e5baa433b5bc895cba44f9256ec976f375ffc9bb53c1b11"
+    "docs/migrations/0021_rollback.sql": "39dc7ccc60775eeb7e5baa433b5bc895cba44f9256ec976f375ffc9bb53c1b11",
+    "docs/migrations/0022_rollback.sql": "b62743e05d0c1fec38214388313658b0c2ceecd087bf7945c312bb6934c96e08",
+    "docs/migrations/0023_rollback.sql": "79b725e193447926f64a545c1bb0591c3f1ebee331d40ddb8856d9c75665d06d"
   }
 }

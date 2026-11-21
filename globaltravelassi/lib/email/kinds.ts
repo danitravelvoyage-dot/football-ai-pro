@@ -7,26 +7,23 @@ export const customerEmailKinds = [
   "additional_documents_requested",
   "application_approved",
   "application_rejected",
-  "payment_proof_received",
-  "payment_approved",
-  "payment_rejected",
   "document_upload_confirmed",
   "document_review_result",
 ] as const;
 export type CustomerEmailKind = (typeof customerEmailKinds)[number];
 
 /** Kinds the customer's own action triggers. Every other kind follows a decision by the owner. */
-export const customerTriggeredKinds: readonly CustomerEmailKind[] = ["application_received", "payment_proof_received", "document_upload_confirmed"];
+export const customerTriggeredKinds: readonly CustomerEmailKind[] = ["application_received", "document_upload_confirmed"];
 
 /**
- * The email for a status change the owner made. The database checks the same mapping. `payment_pending` is set only by a
- * proof submission and has its own email, so a manual move to it sends nothing.
+ * The email for a status change the owner made. A request set back to "new" sends nothing. Every other status has
+ * one email: the three decisions have their own, the rest share the general update.
  */
 export function statusEmailKind(status: ApplicationStatus): CustomerEmailKind | null {
   if (status === "documents_required") return "additional_documents_requested";
   if (status === "approved") return "application_approved";
   if (status === "rejected") return "application_rejected";
-  if (status === "payment_pending" || status === "new") return null;
+  if (status === "new") return null;
   return "application_status_updated";
 }
 
@@ -44,9 +41,6 @@ export interface EmailTemplateData {
   status?: string;
   /** Text the owner wrote for the customer: a status message, or the message for a rejected proof. */
   message?: string;
-  amount?: string;
-  currency?: string;
-  method?: string;
   doc_type?: string;
   verified?: boolean;
 }

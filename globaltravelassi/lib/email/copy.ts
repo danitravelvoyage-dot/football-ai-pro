@@ -2,9 +2,7 @@ import type { Locale } from "@/lib/i18n/config";
 import type { CustomerEmailKind } from "./kinds";
 
 /**
- * Wording of the customer emails, in each language. Placeholders: {name}, {ref}, {service}, {status}, {amount},
- * {method}, {doc}. Values are escaped when the email is built. Payment emails never call a proof a payment: funds count
- * as received only once the team confirms them.
+ * Wording of the customer emails, in each language. Placeholders: {name}, {ref}, {service}, {status}, {doc}. Values are escaped when the email is built.
  */
 export interface EmailCopy {
   subject: string;
@@ -17,8 +15,6 @@ export interface EmailChrome {
   reference: string;
   service: string;
   status: string;
-  amount: string;
-  method: string;
   document: string;
   teamMessage: string;
   cta: string;
@@ -38,8 +34,6 @@ const en: { chrome: EmailChrome; copy: Copies } = {
     reference: "Reference",
     service: "Service",
     status: "Status",
-    amount: "Amount",
-    method: "Method",
     document: "Document",
     teamMessage: "Message from the team",
     cta: "Open my request",
@@ -66,27 +60,12 @@ const en: { chrome: EmailChrome; copy: Copies } = {
     application_approved: {
       subject: "Your request {ref} has been approved",
       heading: "Your request has been approved",
-      body: ["Our team has approved your request to go ahead.", "If a payment is due, the amount and the payment instructions are in your account."],
+      body: ["Our team has approved your request to go ahead.", "Any next step is shown in your account."],
     },
     application_rejected: {
       subject: "Decision on your request {ref}",
       heading: "We cannot continue with your request",
       body: ["After review, we are unable to continue with your request.", "If you have a question, contact us and quote your reference."],
-    },
-    payment_proof_received: {
-      subject: "Payment proof received for {ref}",
-      heading: "We received your payment proof",
-      body: ["We received your proof of payment of {amount} ({method}).", "This is not yet a confirmation. Our team will check that the funds have arrived, then confirm your payment."],
-    },
-    payment_approved: {
-      subject: "Payment confirmed for {ref}",
-      heading: "Your payment is confirmed",
-      body: ["We have confirmed receipt of your payment of {amount}.", "Thank you. Your request continues."],
-    },
-    payment_rejected: {
-      subject: "Payment proof not accepted for {ref}",
-      heading: "We could not confirm your payment",
-      body: ["We could not confirm the payment shown in your proof.", "Please read the message below, check the instructions in your account, and upload a new proof."],
     },
     document_upload_confirmed: {
       subject: "Document received for {ref}",
@@ -112,8 +91,6 @@ const fr: typeof en = {
     reference: "Référence",
     service: "Service",
     status: "Statut",
-    amount: "Montant",
-    method: "Moyen",
     document: "Document",
     teamMessage: "Message de l’équipe",
     cta: "Ouvrir ma demande",
@@ -140,27 +117,12 @@ const fr: typeof en = {
     application_approved: {
       subject: "Votre demande {ref} est approuvée",
       heading: "Votre demande est approuvée",
-      body: ["Notre équipe a approuvé la poursuite de votre demande.", "Si un paiement est dû, le montant et les instructions de paiement se trouvent dans votre compte."],
+      body: ["Notre équipe a approuvé la poursuite de votre demande.", "La suite est indiquée dans votre compte."],
     },
     application_rejected: {
       subject: "Décision concernant votre demande {ref}",
       heading: "Nous ne pouvons pas poursuivre votre demande",
       body: ["Après examen, nous ne sommes pas en mesure de poursuivre votre demande.", "Pour toute question, contactez-nous en indiquant votre référence."],
-    },
-    payment_proof_received: {
-      subject: "Preuve de paiement reçue pour {ref}",
-      heading: "Nous avons reçu votre preuve de paiement",
-      body: ["Nous avons reçu votre preuve de paiement de {amount} ({method}).", "Ce n’est pas encore une confirmation. Notre équipe va vérifier la réception des fonds, puis confirmer votre paiement."],
-    },
-    payment_approved: {
-      subject: "Paiement confirmé pour {ref}",
-      heading: "Votre paiement est confirmé",
-      body: ["Nous confirmons la réception de votre paiement de {amount}.", "Merci. Votre demande suit son cours."],
-    },
-    payment_rejected: {
-      subject: "Preuve de paiement non acceptée pour {ref}",
-      heading: "Nous n’avons pas pu confirmer votre paiement",
-      body: ["Nous n’avons pas pu confirmer le paiement indiqué sur votre preuve.", "Lisez le message ci-dessous, vérifiez les instructions dans votre compte et déposez une nouvelle preuve."],
     },
     document_upload_confirmed: {
       subject: "Document reçu pour {ref}",
@@ -186,8 +148,6 @@ const ar: typeof en = {
     reference: "المرجع",
     service: "الخدمة",
     status: "الحالة",
-    amount: "المبلغ",
-    method: "طريقة الدفع",
     document: "المستند",
     teamMessage: "رسالة من الفريق",
     cta: "فتح طلبي",
@@ -214,27 +174,12 @@ const ar: typeof en = {
     application_approved: {
       subject: "تمت الموافقة على طلبك {ref}",
       heading: "تمت الموافقة على طلبك",
-      body: ["وافق فريقنا على مواصلة معالجة طلبك.", "إذا كان هناك مبلغ مستحق، فستجد المبلغ وتعليمات الدفع في حسابك."],
+      body: ["وافق فريقنا على مواصلة معالجة طلبك.", "ستجد الخطوة التالية موضحة في حسابك."],
     },
     application_rejected: {
       subject: "قرار بخصوص طلبك {ref}",
       heading: "لا يمكننا مواصلة طلبك",
       body: ["بعد المراجعة، لا يمكننا مواصلة معالجة طلبك.", "إن كان لديك أي سؤال، تواصل معنا مع ذكر مرجع طلبك."],
-    },
-    payment_proof_received: {
-      subject: "استلمنا إثبات الدفع للطلب {ref}",
-      heading: "استلمنا إثبات الدفع",
-      body: ["استلمنا إثبات دفع بمبلغ {amount} ({method}).", "هذا ليس تأكيدًا بعد. سيتحقق فريقنا من وصول المبلغ ثم يؤكد دفعتك."],
-    },
-    payment_approved: {
-      subject: "تم تأكيد الدفع للطلب {ref}",
-      heading: "تم تأكيد دفعتك",
-      body: ["نؤكد استلام دفعتك بمبلغ {amount}.", "شكرًا لك. طلبك مستمر."],
-    },
-    payment_rejected: {
-      subject: "لم يُقبل إثبات الدفع للطلب {ref}",
-      heading: "لم نتمكن من تأكيد دفعتك",
-      body: ["لم نتمكن من تأكيد الدفعة الظاهرة في الإثبات الذي أرسلته.", "يُرجى قراءة الرسالة أدناه، ومراجعة التعليمات في حسابك، ثم رفع إثبات جديد."],
     },
     document_upload_confirmed: {
       subject: "استلمنا مستندًا للطلب {ref}",

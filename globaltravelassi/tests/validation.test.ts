@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applicationSchema, phoneSchema, registerSchema, paymentSchema, documentSchema, serviceSchema } from "@/lib/validation/schemas";
+import { applicationSchema, phoneSchema, registerSchema, documentSchema, serviceSchema, leadSourceSchema } from "@/lib/validation/schemas";
 
 const validApplication = {
   fullName: "Amina Benali",
@@ -79,17 +79,14 @@ describe("registration", () => {
   });
 });
 
-describe("payments", () => {
-  const base = { applicationId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301", amount: "15 000,50", currency: "DZD", method: "cash", status: "received", reference: "R-1", note: "", receivedOn: "" };
-  it("reads decimal commas and spaces in amounts", () => {
-    expect(paymentSchema.parse(base).amount).toBe(15000.5);
+describe("lead source correction", () => {
+  const base = { applicationId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301", leadSource: "tiktok", reason: "Campaign tag was missing" };
+  it("accepts a known source with a reason", () => {
+    expect(leadSourceSchema.safeParse(base).success).toBe(true);
   });
-  it("rejects zero or negative amounts", () => {
-    expect(paymentSchema.safeParse({ ...base, amount: "0" }).success).toBe(false);
-    expect(paymentSchema.safeParse({ ...base, amount: "-5" }).success).toBe(false);
-  });
-  it("rejects an unknown payment method", () => {
-    expect(paymentSchema.safeParse({ ...base, method: "crypto" }).success).toBe(false);
+  it("refuses an unknown source and a missing reason", () => {
+    expect(leadSourceSchema.safeParse({ ...base, leadSource: "newspaper" }).success).toBe(false);
+    expect(leadSourceSchema.safeParse({ ...base, reason: "" }).success).toBe(false);
   });
 });
 

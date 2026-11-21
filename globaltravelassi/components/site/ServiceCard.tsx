@@ -11,7 +11,9 @@ export function ServiceCard({ service, dict, locale, source }: { service: Servic
   return (
     <article className="group flex h-full flex-col rounded-3xl border border-navy-100 bg-white p-7 shadow-sm transition duration-500 hover:-translate-y-1 hover:border-gold-300 hover:shadow-xl hover:shadow-navy-900/10">
       <Badge tone="gold">{dict.categories[service.category]}</Badge>
-      <h3 className="mt-5 font-display text-2xl font-semibold leading-snug text-navy-900">{serviceTitle(service, locale)}</h3>
+      <h3 className="mt-5 font-display text-2xl font-semibold leading-snug text-navy-900">
+        <Link href={`/${locale}/services/${service.slug}`} className="hover:text-gold-600">{serviceTitle(service, locale)}</Link>
+      </h3>
       <p className="mt-3 flex-1 text-sm leading-relaxed text-navy-600">{serviceDescription(service, locale)}</p>
       <div className="mt-6 flex items-center justify-between gap-4 border-t border-navy-100 pt-5">
         <p className={hasPrice ? "font-semibold text-navy-900" : "text-sm text-navy-500"}>

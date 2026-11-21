@@ -132,28 +132,6 @@ export function leadConversion(rows: ApplicationRow[], now: Date, period: Period
   return { leads: rows.length, concluded: done.length, converted: done.filter((r) => won(r.status)).length, conversionRate: rate(done.filter((r) => won(r.status)).length, done.length), byPeriod };
 }
 
-export interface PaymentRow {
-  amount: number;
-  currency: string;
-  status: "pending" | "received" | "cancelled";
-  receivedAt: string | null;
-}
-
-/** Revenue is what was received, per currency. Pending and cancelled payments are never counted as revenue. */
-export function revenueTracking(rows: PaymentRow[], now: Date, period: Period) {
-  const received = rows.filter((r) => r.status === "received" && r.receivedAt);
-  const totals: Record<string, number> = {};
-  for (const r of received) totals[r.currency] = Math.round(((totals[r.currency] ?? 0) + r.amount) * 100) / 100;
-  const pending: Record<string, number> = {};
-  for (const r of rows.filter((x) => x.status === "pending")) pending[r.currency] = Math.round(((pending[r.currency] ?? 0) + r.amount) * 100) / 100;
-  const byPeriod = bucketsEndingAt(now, period).map((key) => {
-    const amounts: Record<string, number> = {};
-    for (const r of received.filter((x) => bucketOf(x.receivedAt as string, period) === key)) amounts[r.currency] = Math.round(((amounts[r.currency] ?? 0) + r.amount) * 100) / 100;
-    return { period: key, received: amounts };
-  });
-  return { receivedByCurrency: totals, pendingByCurrency: pending, byPeriod };
-}
-
 export interface UsageRow {
   providerId: string;
   day: string;

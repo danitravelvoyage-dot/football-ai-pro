@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { siteConfig } from "@/lib/config";
-import { noteSchema, paymentSchema, serviceSchema, statusSchema } from "@/lib/validation/schemas";
+import { contactSchema, customerCategorySchema, leadSourceSchema, noteSchema, serviceSchema, statusSchema } from "@/lib/validation/schemas";
 import { formObject, localeFrom, parseWith } from "./helpers";
 import type { ActionState } from "./types";
 import { queueCustomerEmail, retryFailedCustomerEmails } from "@/lib/email/notify";
@@ -12,7 +12,10 @@ import { statusEmailKind } from "@/lib/email/kinds";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Returns a client authenticated as an ACTIVE ADMIN, or null. Checked on every admin action. */
+/**
+ * Returns a client authenticated as an ACTIVE ADMIN, or null. Every admin action calls it first. The database checks the
+ * same role again in every policy and function.
+ */
 async function adminClient() {
   const supabase = await createServerSupabase();
   const { data: userData } = await supabase.auth.getUser();
@@ -30,14 +33,28 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
+/** Records an internal action. The activity log is append-only (migration 0023); a failed write is logged, not hidden. */
+async function logActivity(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  actorId: string,
+  applicationId: string,
+  kind: "source_corrected" | "contact_logged" | "category_changed" | "status_changed" | "lead_recorded",
+  detail: string,
+) {
+  const { error } = await supabase.from("crm_activity").insert({
+    application_id: applicationId,
+    actor_id: actorId,
+    kind,
+    detail: detail.slice(0, 300),
+  });
+  if (error) console.error("crm_activity write failed", error.code);
+}
+
 export async function updateStatusAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
   const parsed = parseWith(statusSchema, formObject(formData));
   if (!parsed.ok) return parsed.state;
-  // "Payment pending" is set only when a customer submits a proof. Setting it by hand would show a payment step with
-  // no proof behind it.
-  if (parsed.data.status === "payment_pending") return { ok: false, code: "invalid_input", fieldErrors: { status: "invalid_option" } };
 
   const { data, error } = await admin.supabase
     .from("applications")
@@ -64,6 +81,7 @@ export async function updateStatusAction(formData: FormData): Promise<ActionStat
     refresh();
     return { ok: false, code: "timeline_not_saved" };
   }
+  await logActivity(admin.supabase, admin.userId, parsed.data.applicationId, "status_changed", parsed.data.status);
   const emailKind = statusEmailKind(parsed.data.status);
   if (emailKind) queueCustomerEmail(admin.supabase, emailKind, event.id);
   refresh();
@@ -86,55 +104,69 @@ export async function addNoteAction(formData: FormData): Promise<ActionState> {
   return { ok: true, code: "note_saved" };
 }
 
-/** Maps a payment-function refusal to the code the owner's screen shows. The database message is not shown. */
-function manualPaymentFailure(message: string): ActionState {
-  if (/cannot be deleted|changes only through|protected/i.test(message)) return { ok: false, code: "protected_records" };
-  if (/not found/i.test(message)) return { ok: false, code: "not_found" };
-  return { ok: false, code: "generic" };
-}
-
-export async function recordPaymentAction(formData: FormData): Promise<ActionState> {
+/**
+ * Owner: records a contact with the customer (WhatsApp, email, phone, in person). WhatsApp is manual: the site opens a
+ * chat, the owner sends the message, then records it here. Nothing is sent automatically.
+ */
+export async function logContactAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
-  const parsed = parseWith(paymentSchema, formObject(formData));
+  const parsed = parseWith(contactSchema, formObject(formData));
   if (!parsed.ok) return parsed.state;
-  const input = parsed.data;
 
-  // Owner-recorded payments are written by record_manual_payment(); the database checks the owner again.
-  const { data, error } = await admin.supabase.rpc("record_manual_payment", {
-    p_application: input.applicationId,
-    p_amount: input.amount,
-    p_currency: input.currency,
-    p_method: input.method,
-    p_status: input.status,
-    p_reference: input.reference,
-    p_note: input.note,
-    p_received_on: input.receivedOn || null,
-  });
-  if (error || !data) return manualPaymentFailure(error?.message ?? "");
-
-  if (input.status === "received") {
-    await admin.supabase.from("application_events").insert({
-      application_id: input.applicationId,
-      kind: "payment",
-      message: `${input.amount} ${input.currency}`,
-      actor_id: admin.userId,
-    });
-  }
+  const { data, error } = await admin.supabase
+    .from("applications")
+    .update({ last_contacted_at: new Date().toISOString(), last_contact_channel: parsed.data.channel })
+    .eq("id", parsed.data.applicationId)
+    .select("id");
+  if (error) return { ok: false, code: "generic" };
+  if (!data?.length) return { ok: false, code: "not_found" };
+  await logActivity(admin.supabase, admin.userId, parsed.data.applicationId, "contact_logged", `${parsed.data.channel}${parsed.data.note ? `: ${parsed.data.note}` : ""}`);
   refresh();
-  return { ok: true, code: "payment_saved", id: String(data) };
+  return { ok: true, code: "contact_saved" };
 }
 
-export async function setPaymentStatusAction(formData: FormData): Promise<ActionState> {
+/**
+ * Owner: corrects the lead source of a request. A recorded source changes only with a reason, which is written to the
+ * activity log together with the old and new values. The database refuses a silent change (migration 0023).
+ */
+export async function correctLeadSourceAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
-  const paymentId = String(formData.get("paymentId") ?? "");
-  const status = String(formData.get("status") ?? "");
-  if (!UUID.test(paymentId) || !["pending", "received", "cancelled"].includes(status)) return { ok: false, code: "invalid_input" };
+  const parsed = parseWith(leadSourceSchema, formObject(formData));
+  if (!parsed.ok) return parsed.state;
 
-  // A payment with a proof is refused here by the database: it changes only through its decision.
-  const { error } = await admin.supabase.rpc("set_manual_payment_status", { p_payment: paymentId, p_status: status });
-  if (error) return manualPaymentFailure(error.message);
+  const { data: current } = await admin.supabase.from("applications").select("lead_source").eq("id", parsed.data.applicationId).maybeSingle();
+  if (!current) return { ok: false, code: "not_found" };
+  const before = current.lead_source ?? "not_recorded";
+  if (before === parsed.data.leadSource) return { ok: true, code: "saved" };
+
+  const { data, error } = await admin.supabase
+    .from("applications")
+    .update({ lead_source: parsed.data.leadSource, lead_source_corrected_by: admin.userId, lead_source_corrected_at: new Date().toISOString() })
+    .eq("id", parsed.data.applicationId)
+    .select("id");
+  if (error) return { ok: false, code: "generic" };
+  if (!data?.length) return { ok: false, code: "not_found" };
+  await logActivity(admin.supabase, admin.userId, parsed.data.applicationId, "source_corrected", `${before} → ${parsed.data.leadSource}: ${parsed.data.reason}`);
+  refresh();
+  return { ok: true, code: "saved" };
+}
+
+export async function setCustomerCategoryAction(formData: FormData): Promise<ActionState> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, code: "unauthorized" };
+  const parsed = parseWith(customerCategorySchema, formObject(formData));
+  if (!parsed.ok) return parsed.state;
+
+  const { data, error } = await admin.supabase
+    .from("applications")
+    .update({ customer_category: parsed.data.category })
+    .eq("id", parsed.data.applicationId)
+    .select("id");
+  if (error) return { ok: false, code: "generic" };
+  if (!data?.length) return { ok: false, code: "not_found" };
+  await logActivity(admin.supabase, admin.userId, parsed.data.applicationId, "category_changed", parsed.data.category);
   refresh();
   return { ok: true, code: "saved" };
 }
@@ -154,9 +186,8 @@ export async function setDocumentVerifiedAction(formData: FormData): Promise<Act
 }
 
 /**
- * Owner only. Deletes a request. The database checks first, in one transaction: if any protected record exists (a proof,
- * a decided or audited payment, a removal), it refuses and nothing is deleted. Only then are the document files removed
- * from storage. If storage cannot remove them, the owner is told how many files may remain.
+ * Owner only. Deletes a request. The database checks first, in one transaction: a request that holds protected records
+ * is refused and nothing is deleted. Only then are the document files removed from storage.
  */
 export async function deleteApplicationAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();

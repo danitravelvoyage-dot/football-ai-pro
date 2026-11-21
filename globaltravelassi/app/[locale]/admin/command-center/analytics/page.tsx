@@ -26,7 +26,6 @@ export default async function AnalyticsPage({ params, searchParams }: { params: 
   if (state.status !== "ok") return <LoadState kind={state.status} dict={dict} />;
 
   const pct = (v: number | null) => (v === null ? a.unknown : `${v}%`);
-  const money = (rec: Record<string, number>) => (Object.keys(rec).length === 0 ? a.none : Object.entries(rec).map(([c, v]) => `${v.toLocaleString(locale)} ${c}`).join(" · "));
 
   return (
     <>
@@ -42,7 +41,6 @@ export default async function AnalyticsPage({ params, searchParams }: { params: 
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard label={a.approvalRate} value={pct(state.approvals.approvalRate)} />
         <StatCard label={a.leadConversion} value={pct(state.leads.conversionRate)} />
-        <StatCard label={a.revenue} value={money(state.revenue.receivedByCurrency)} />
         <StatCard label={a.executionCost} value={!state.cost.complete || state.cost.totalCost === null ? a.unknown : state.cost.totalCost} />
       </div>
 
@@ -111,11 +109,6 @@ export default async function AnalyticsPage({ params, searchParams }: { params: 
         </DataTable>
       </Panel>
 
-      <Panel title={a.revenueTitle}>
-        <p className="mb-3 text-sm text-navy-700">{a.receivedLabel}: {money(state.revenue.receivedByCurrency)} · {a.pendingLabel}: {money(state.revenue.pendingByCurrency)}</p>
-        <p className="text-xs text-navy-500">{a.revenueNote}</p>
-      </Panel>
-
       <Panel title={a.costTitle}>
         {state.cost.providers.length === 0 ? <p className="text-sm text-navy-600">{a.none}</p> : (
           <DataTable head={[a.provider, a.requests, a.tokensIn, a.tokensOut, a.cost]}>
@@ -133,7 +126,7 @@ export default async function AnalyticsPage({ params, searchParams }: { params: 
         <p className="mt-3 text-xs text-navy-500">{a.costNote}</p>
       </Panel>
 
-      <p className="text-xs text-navy-500">{a.sample}: {state.sample.approvals} {a.approvalsCount} · {state.sample.artifacts} {a.contentCount} · {state.sample.runs} {a.runsCount} · {state.sample.applications} {a.leadsCount} · {state.sample.payments} {a.paymentsCount}</p>
+      <p className="text-xs text-navy-500">{a.sample}: {state.sample.approvals} {a.approvalsCount} · {state.sample.artifacts} {a.contentCount} · {state.sample.runs} {a.runsCount} · {state.sample.applications} {a.leadsCount}</p>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import type { ApplicationStatus } from "@/lib/domain";
+import { normalizeStatus, type ApplicationStatus } from "@/lib/domain";
 import type { Dict } from "@/lib/i18n";
 import { Badge } from "@/components/ui";
 
@@ -6,7 +6,6 @@ const tone: Record<ApplicationStatus, "neutral" | "info" | "warning" | "success"
   new: "info",
   in_review: "gold",
   documents_required: "warning",
-  payment_pending: "warning",
   submitted: "info",
   approved: "success",
   completed: "success",
@@ -14,6 +13,7 @@ const tone: Record<ApplicationStatus, "neutral" | "info" | "warning" | "success"
   cancelled: "neutral",
 };
 
-export function StatusBadge({ status, dict }: { status: ApplicationStatus; dict: Dict }) {
-  return <Badge tone={tone[status]}>{dict.statuses[status]}</Badge>;
+export function StatusBadge({ status, dict }: { status: string; dict: Dict }) {
+  const s = normalizeStatus(status);
+  return <Badge tone={tone[s]}>{dict.statuses[s]}</Badge>;
 }

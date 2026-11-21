@@ -30,6 +30,13 @@ vi.mock("next/navigation", () => ({
     throw Object.assign(new Error("NEXT_REDIRECT"), { digest: `NEXT_REDIRECT;${url}` });
   },
 }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-forwarded-for": "198.51.100.7" }),
+  cookies: async () => ({ get: () => undefined }),
+}));
+vi.mock("@/lib/attribution/cookie", () => ({
+  currentAttribution: async () => ({ source: "tiktok", detail: "summer26" }),
+}));
 vi.mock("@/lib/email/notify", () => ({
   queueCustomerEmail: (_c: unknown, kind: string, subject: string) => { state.emails.push({ kind, subject }); },
   retryFailedCustomerEmails: async () => ({ sent: 0, failed: 0, skipped: 0 }),
@@ -48,8 +55,14 @@ const fake = () => ({
     },
     update: () => ({ eq: () => ({ select: async () => ({ data: [{ id: APP, status: "x" }], error: null }) }) }),
   }),
-  rpc: async () => ({ data: [], error: null }),
-  storage: { from: () => ({ remove: async () => ({ error: null }) }) },
+  rpc: async (fn: string) => ({ data: fn === "consume_rate_limit" ? true : [], error: null }),
+  storage: {
+    from: () => ({
+      remove: async () => ({ error: null }),
+      // A real PDF signature: the document check reads the first bytes.
+      download: async () => ({ data: new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])]), error: null }),
+    }),
+  },
 });
 vi.mock("@/lib/supabase/server", () => ({ createServerSupabase: async () => fake() }));
 
@@ -66,7 +79,7 @@ const asAdmin = () => { state.user = ADMIN; state.role = "admin"; state.active =
 const asCustomer = (active = true) => { state.user = USER; state.role = "customer"; state.active = active; };
 
 const applicationForm = () => form({
-  locale: "fr", fullName: "Amina Test", email: "amina@example.dz", whatsapp: "0555000111", nationality: "DZ",
+  submissionToken: "11111111-2222-4333-8444-555555555555", website: "", locale: "fr", fullName: "Amina Test", email: "amina@example.dz", whatsapp: "0555000111", nationality: "DZ",
   countryOfResidence: "DZ", destinationCountry: "FR", serviceId: SERVICE, travelDate: "", employmentStatus: "employed",
   previousTravelHistory: "", additionalInfo: "", source: "", consent: "on",
 });
@@ -131,7 +144,10 @@ describe("customer actions", () => {
   it("a new request records its language and queues the received email", async () => {
     asCustomer();
     await expect(createApplicationAction(applicationForm())).rejects.toThrow("NEXT_REDIRECT");
-    expect(state.inserts[0]).toMatchObject({ table: "applications", row: { user_id: USER, locale: "fr" } });
+    expect(state.inserts[0]).toMatchObject({
+      table: "applications",
+      row: { user_id: USER, locale: "fr", lead_source: "tiktok", lead_source_detail: "summer26", submission_token: "11111111-2222-4333-8444-555555555555" },
+    });
     expect(state.emails).toEqual([{ kind: "application_received", subject: APP }]);
   });
 

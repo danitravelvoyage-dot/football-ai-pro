@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDictionary, isLocale, countryName, type Locale } from "@/lib/i18n";
 import { countryCodes } from "@/lib/countries";
@@ -35,6 +36,8 @@ export default async function ApplyPage({
     .sort((a, b) => a.label.localeCompare(b.label, locale));
   const employment = employmentStatuses.map((value) => ({ value, label: dict.employment[value] }));
   const serviceOptions = services.map((s) => ({ value: s.id, label: serviceTitle(s, locale) }));
+  // One token per form render: a double submit reuses it, and the server returns the first request (see the action).
+  const submissionToken = crypto.randomUUID();
 
   return (
     <Section className="pt-12 sm:pt-16">
@@ -53,6 +56,14 @@ export default async function ApplyPage({
             >
               <input type="hidden" name="locale" value={locale} />
               <input type="hidden" name="source" value={source ?? ""} />
+              <input type="hidden" name="submissionToken" value={submissionToken} />
+              {/* Honeypot: hidden from people and from screen readers. Bots that fill it are ignored. */}
+              <div aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, overflow: "hidden" }}>
+                <label>
+                  Website
+                  <input type="text" name="website" tabIndex={-1} autoComplete="off" defaultValue="" />
+                </label>
+              </div>
 
               <fieldset className="space-y-5">
                 <legend className="mb-4 font-display text-xl text-navy-900">{dict.apply.sections.personal}</legend>
@@ -84,6 +95,14 @@ export default async function ApplyPage({
                 <Alert tone="info">{dict.apply.hints.documents}</Alert>
               </fieldset>
 
+              <div className="space-y-3 rounded-2xl bg-navy-50/70 p-5 text-sm leading-relaxed text-navy-700">
+                <p>{dict.apply.privacyNotice}</p>
+                <p>
+                  <Link href={`/${locale}/privacy`} className="font-semibold text-gold-700 underline">{dict.legal.privacyLabel}</Link>
+                  {" · "}
+                  <Link href={`/${locale}/terms`} className="font-semibold text-gold-700 underline">{dict.legal.termsLabel}</Link>
+                </p>
+              </div>
               <CheckboxField name="consent" required label={dict.apply.consent} />
             </ActionForm>
           )}

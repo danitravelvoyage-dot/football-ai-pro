@@ -3,6 +3,7 @@ import { defaultLocale, isLocale } from "@/lib/i18n/config";
 import { refreshSession, type SessionRefresh } from "@/lib/supabase/middleware";
 import { isSupabaseConfigured, siteConfig } from "@/lib/config";
 import { buildCsp, CSP_REPORT_ONLY_HEADER, generateNonce } from "@/lib/security/csp";
+import { classifyLeadSource, encodeAttribution, LEAD_SOURCE_COOKIE, LEAD_SOURCE_COOKIE_MAX_AGE } from "@/lib/attribution/lead-source";
 
 /** Pages that need a signed-in user. Role checks happen in the page/route as well. */
 const PROTECTED = /^\/(ar|fr|en)\/(dashboard|apply|admin|documents)(\/|$)/;
@@ -21,7 +22,29 @@ export async function middleware(request: NextRequest) {
   });
   const response = await handleRequest(request, csp);
   response.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+  recordFirstSource(request, response);
   return response;
+}
+
+/**
+ * Records where a visitor came from, once. The first source is kept: a later visit never overwrites it. The cookie is
+ * httpOnly, lasts 30 days and holds only a source name and a short campaign label (see docs/PRIVACY_AND_COOKIES.md).
+ */
+function recordFirstSource(request: NextRequest, response: NextResponse) {
+  if (request.method !== "GET" || request.cookies.has(LEAD_SOURCE_COOKIE)) return;
+  if (TRIGGER_PATHS.has(request.nextUrl.pathname) || request.nextUrl.pathname.startsWith("/api/")) return;
+  const attribution = classifyLeadSource({
+    utmSource: request.nextUrl.searchParams.get("utm_source"),
+    referer: request.headers.get("referer"),
+    siteHost: request.nextUrl.hostname,
+  });
+  response.cookies.set(LEAD_SOURCE_COOKIE, encodeAttribution(attribution), {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: LEAD_SOURCE_COOKIE_MAX_AGE,
+  });
 }
 
 async function handleRequest(request: NextRequest, csp: string): Promise<NextResponse> {

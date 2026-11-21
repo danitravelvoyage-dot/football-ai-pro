@@ -20,12 +20,12 @@ describe("migration order", () => {
     expect(nums).toEqual(Array.from({ length: nums.length }, (_, i) => i + 1));
   });
 
-  it("0010 (append-only audit triggers) comes before 0018, and 0021 is the last migration", () => {
+  it("0010 (append-only audit triggers) comes before 0018, and 0023 is the last migration", () => {
     const tenth = numbered.findIndex((f) => f.startsWith("0010_"));
     const eighteenth = numbered.findIndex((f) => f.startsWith("0018_"));
     expect(tenth).toBeGreaterThanOrEqual(0);
     expect(tenth).toBeLessThan(eighteenth);
-    expect(numbered[numbered.length - 1]).toBe("0021_customer_email_notifications.sql");
+    expect(numbered[numbered.length - 1]).toBe("0023_crm_attribution_requests.sql");
   });
 
   it("0018 defines no dependency on a later migration", () => {
@@ -93,11 +93,13 @@ describe("applied history is not rewritten", () => {
   it("every migration from 0001 to 0018 is in the manifest, so an edit to any of them shows up", () => {
     const manifest = JSON.parse(read("docs/migrations/manifest.json")) as { files: Record<string, string> };
     const migrations = Object.keys(manifest.files).filter((f) => f.startsWith("supabase/migrations/"));
-    expect(migrations).toHaveLength(21);
+    expect(migrations).toHaveLength(23);
     expect(migrations[0]).toBe("supabase/migrations/0001_init.sql");
     expect(migrations[17]).toBe("supabase/migrations/0018_owner_approval_center.sql");
     expect(migrations[18]).toBe("supabase/migrations/0019_manual_payments.sql");
     expect(migrations[19]).toBe("supabase/migrations/0020_customer_hardening.sql");
     expect(migrations[20]).toBe("supabase/migrations/0021_customer_email_notifications.sql");
+    expect(migrations[21]).toBe("supabase/migrations/0022_remove_payment_workflow.sql");
+    expect(migrations[22]).toBe("supabase/migrations/0023_crm_attribution_requests.sql");
   });
 });

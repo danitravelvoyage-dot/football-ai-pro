@@ -1,37 +1,39 @@
-# Completion checklist (customer launch scope)
+# Completion checklist: customer launch scope
 
-Snapshot after the launch-preparation pass. "Built" means the code exists and passes automated checks. "Verified live" needs a staging project, and none has been run yet.
+"Built" means the code exists and passes the automated checks. "Verified live" needs a staging project, which has not been created yet.
 
 | Area | Built | Automated checks | Verified live |
 |---|---|---|---|
-| Public site: home, services, privacy (ar, fr, en, RTL) | Yes | Browser smoke, 375px | No |
-| Services catalogue: the 9 business services | Yes (`seed.sql` + `seed_catalog.sql`, prices empty) | PGlite | No |
-| Registration, login, logout, password reset | Yes | Unit, browser (forms render) | No |
-| Auth emails in ar, fr, en (Supabase templates) | Yes | Go template execution | No |
-| Customer dashboard and request list | Yes | Build | No |
-| Request creation (records its language) | Yes | Unit, PGlite | No |
-| Document upload, list, download, removal | Yes | Unit, PGlite | No |
-| Payment instructions (USDT, BaridiMob, RedotPay) | Yes, owner-entered | Unit, PGlite | No |
-| Payment proof submission, then "waiting for review" | Yes | Unit, PGlite | No |
-| Request timeline, localised | Yes | Build | No |
-| Admin: requests, status, notes, documents, payments | Yes | Unit, PGlite, sign-in redirect | No |
-| Admin: payment approval and rejection | Yes | Unit, PGlite | No |
-| Admin: customers (activate, deactivate) | Yes | Unit | No |
-| Admin: services and prices | Yes | Unit | No |
-| Admin: reports and CSV export | Yes | Unit | No |
-| Admin: customer email log and retry | Yes | Unit, PGlite | No |
-| Payment audit log (append-only) | Yes (0019) | PGlite | No |
-| Customer transactional emails (10 kinds) | Yes | Unit, PGlite | No (no SMTP configured) |
-| CSP with per-request nonce (report-only) | Yes | Unit, browser, enforcement dry run on public pages | No |
-| Open-redirect protection | Yes | Unit | No |
-| RLS for customers and owner | Yes (0001, 0019, 0020, 0021) | PGlite | No |
-| Disabled accounts blocked (app and database) | Yes | Unit, PGlite | No |
-| AI back office | Exists, deferred | Unit, PGlite | No (out of scope) |
+| Public site (home, services, privacy, terms, cookies), ar / fr / en, RTL | Yes | browser smoke, 375px | no |
+| Nine service pages: content, metadata, Open Graph, language alternates | Yes | unit (content), browser | no |
+| Services catalogue, prices "on request" | Yes | database (PGlite) | no |
+| Sign-up, sign-in, sign-out, password reset | Yes | unit, browser (forms render) | no |
+| Auth emails in ar / fr / en (Supabase templates) | Yes | Go template execution | no |
+| Service request form: validation, honeypot, rate limit, one-time token, consent notice | Yes | unit, database | no |
+| Request reference (10 random hex characters) | Yes | database | no |
+| Customer dashboard, request list and detail, timeline | Yes | build | no |
+| Document upload, list, download, removal; file signature check | Yes | unit, database | no |
+| Lead source attribution (first visit, cookie, UTM, referrer) | Yes | unit, database | no |
+| Admin overview, statistics by status group, service, language, source | Yes | build | no |
+| Admin requests: list, filters, detail, status, notes | Yes | unit | no |
+| Admin CRM: lead source correction, customer category, contact log, activity | Yes | unit, database | no |
+| Admin customers (activate and deactivate) | Yes | unit | no |
+| Admin services and prices | Yes | unit | no |
+| Admin reports and CSV export, formula-safe | Yes | unit | no |
+| Admin customer email log and retry | Yes | unit, database | no |
+| Customer emails (nine flows plus two auth flows) | Yes | unit, database | no (no SMTP configured) |
+| WhatsApp: click-to-chat links, manual contact, prefilled messages | Yes | unit (link builder), browser | no (number unconfirmed) |
+| Payment workflow | **Removed** | tests check it is gone | no |
+| Content security policy (nonce, report-only) | Yes | unit, browser | no |
+| Open-redirect protection | Yes | unit | no |
+| Row Level Security, disabled accounts blocked (app and database) | Yes | database | no |
+| AI back office | Deferred | unit | out of scope |
 
 ## Open items
 
-1. Logged-in browser tests on staging (needs a staging project, which needs owner approval).
-2. Migrations 0019, 0020 and 0021 applied nowhere.
-3. SMTP not configured. No real email has been sent.
-4. CSP enforcement not enabled (needs owner approval after staging).
-5. Real prices and real payment instructions are owner data, not entered.
+1. A staging project: blocked by the organisation's free-plan project limit (owner decision).
+2. Migrations 0019–0023 are applied nowhere.
+3. SMTP not configured; no real email has been sent.
+4. WhatsApp number country code to be confirmed.
+5. Legal text and retention periods to be confirmed by the owner.
+6. CSP enforcement not enabled.
