@@ -46,11 +46,19 @@ Every step writes an audit event (`scheduler.job_enqueued`, `scheduler.job_start
 
 The owner's inbox receives these notices from the scheduler (see `lib/ai/notifications/`):
 
+- **Scheduler not running** (critical, once per day). Raised by the watchdog endpoint, not by the scheduler itself.
+- **Owner report** (information, or warning when something needs attention). Written once per day after a run.
 - **Overdue scheduled work** (warning, once per day). Raised after a run when queued slots are past their grace period.
 - **Daily agent summary** (info, or warning when an agent's failure rate is 25% or more). Written by the cycle once per day.
 - **Terminal task failure** (critical, once per task). Raised by the orchestrator when a task fails for good.
 
-Limit: a worker that never runs cannot report its own absence. The "no recent worker" status appears on the
+**Watchdog.** `POST /api/ai/scheduler/watchdog` (same bearer secret) checks the scheduler's heartbeat from outside the
+scheduler. When no run has been seen while the scheduler is enabled, it writes a critical *Scheduler not running*
+notice, once a day. Call it from a second external trigger on its own schedule.
+
+The owner report is also written once a day after a scheduler run, with runs, failures, unread notices and scheduler status.
+
+Limit: a worker that never runs cannot report its own absence from inside the scheduler. The "no recent worker" status appears on the
 scheduler and monitor pages, but no notice is sent for it yet. An independent check (for example a second external
 cron that reads the status) is needed for that case.
 
@@ -119,3 +127,4 @@ Until all five are in place, the scheduler does nothing, and the status page sho
 - `app/api/ai/scheduler/route.ts`: the trigger endpoint.
 - `supabase/migrations/0011_scheduler.sql`: the queue, heartbeats, settings and functions (not applied).
 - `lib/ai/notifications/*` and `supabase/migrations/0012_owner_notifications.sql`: the owner inbox (not applied).
+- `app/api/ai/scheduler/watchdog/route.ts` and `lib/ai/scheduler/auth.ts`: the independent watchdog and the shared trigger check.

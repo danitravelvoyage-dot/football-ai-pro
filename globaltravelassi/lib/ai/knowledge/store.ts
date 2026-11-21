@@ -16,6 +16,20 @@ export interface KbStore {
   insert(entry: KbEntryInput, createdBy: string, updatedAt: string): Promise<KbEntry>;
   /** Replaces the content and bumps the version. The version is checked so two edits cannot overwrite each other. */
   update(id: string, expectedVersion: number, patch: Partial<KbEntryInput>, updatedAt: string): Promise<KbEntry>;
+  /** Earlier versions of one entry, newest first. Written by the database on every change. */
+  versions(id: string): Promise<KbVersion[]>;
+}
+
+export interface KbVersion {
+  entryId: string;
+  version: number;
+  title: string;
+  body: string;
+  reliabilityStatus: string;
+  officialSourceUrl: string | null;
+  tags: string[];
+  replacedAt: string;
+  replacedBy: string | null;
 }
 
 export class KbVersionConflictError extends Error {
@@ -29,6 +43,7 @@ export class KbVersionConflictError extends Error {
 export class MemoryKbStore implements KbStore {
   private entries = new Map<string, KbEntry>();
   private nextId = 0;
+  private history: KbVersion[] = [];
 
   async list(filter: KbFilter) {
     return [...this.entries.values()]
@@ -58,8 +73,23 @@ export class MemoryKbStore implements KbStore {
     const current = this.entries.get(id);
     if (!current) throw new Error("Entry not found.");
     if (current.version !== expectedVersion) throw new KbVersionConflictError();
+    this.history.push({
+      entryId: id,
+      version: current.version,
+      title: current.title,
+      body: current.body,
+      reliabilityStatus: current.reliabilityStatus,
+      officialSourceUrl: current.officialSourceUrl,
+      tags: [...current.tags],
+      replacedAt: updatedAt,
+      replacedBy: null,
+    });
     const next: KbEntry = { ...current, ...patch, version: current.version + 1, updatedAt };
     this.entries.set(id, next);
     return next;
+  }
+
+  async versions(id: string): Promise<KbVersion[]> {
+    return this.history.filter((h) => h.entryId === id).reverse();
   }
 }

@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
+import type { Dict } from "@/lib/i18n/en";
 import { loadCommandCenter, RUN_LIMIT } from "@/lib/ai/command-center/load";
 import { CORE_MODULES, rollupByDepartment, truncate } from "@/lib/ai/command-center/view";
 import { loadProviderConfig } from "@/lib/ai/llm/config";
+import { loadOwnerSummary } from "@/lib/ai/command-center/summary";
 import { Alert } from "@/components/ui";
 import { Panel, StatCard } from "@/components/admin/AdminUI";
 import { Fact, LoadState } from "@/components/admin/command-center/Parts";
@@ -44,6 +46,8 @@ export default async function CommandCenterOverview({ params }: { params: Promis
       </div>
 
       {runsTruncated && <Alert tone="warning">{t.runScopeNote}</Alert>}
+
+      <OwnerSummarySection t={t} base={base} />
 
       <div className="grid gap-8 lg:grid-cols-5">
         <div className="lg:col-span-3">
@@ -163,6 +167,45 @@ export default async function CommandCenterOverview({ params }: { params: Promis
         </div>
       </Panel>
 
+    </>
+  );
+}
+
+/** The unified owner view: real counts from each module, and a link to every module. */
+async function OwnerSummarySection({ t, base }: { t: Dict["commandCenter"]; base: string }) {
+  const summary = await loadOwnerSummary();
+  const k = t.summaryUi;
+  if (summary === "unauthorized") return <Alert tone="warning">{k.unauthorized}</Alert>;
+  const val = (v: number | string | null) => (v === null ? k.unavailable : v);
+  const modules = [
+    ["campaigns", k.mCampaigns],
+    ["content", k.mContent],
+    ["approvals", k.mApprovals],
+    ["notifications", k.mNotifications],
+    ["knowledge", k.mKnowledge],
+    ["memory", k.mMemory],
+    ["monitor", k.mMonitor],
+    ["scheduler", k.mScheduler],
+    ["agents", k.mAgents],
+    ["tasks", k.mTasks],
+  ] as const;
+  return (
+    <>
+      <h2 className="font-display text-2xl font-semibold text-navy-900">{k.title}</h2>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+        <StatCard label={k.activeCampaigns} value={val(summary.activeCampaigns)} />
+        <StatCard label={k.contentWaiting} value={val(summary.contentWaiting)} />
+        <StatCard label={k.unreadNotices} value={val(summary.unreadNotices)} />
+        <StatCard label={k.schedulerStatus} value={summary.schedulerStatus ?? k.unavailable} />
+        <StatCard label={k.knowledgeEntries} value={val(summary.knowledgeEntries)} />
+      </div>
+      <nav aria-label={k.navLabel} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {modules.map(([slug, label]) => (
+          <Link key={slug} href={`${base}/${slug}`} className="rounded-2xl bg-white p-4 text-sm font-semibold text-navy-800 ring-1 ring-navy-100 hover:ring-gold-300">
+            {label}
+          </Link>
+        ))}
+      </nav>
     </>
   );
 }

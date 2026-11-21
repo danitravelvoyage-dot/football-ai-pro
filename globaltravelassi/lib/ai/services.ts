@@ -28,6 +28,10 @@ import { NotificationService } from "./notifications/service";
 import { SupabaseNotificationStore } from "./notifications/supabase-store";
 import { postAgentSummary } from "./notifications/summary";
 import { postOwnerReport } from "./notifications/report";
+import { CampaignService } from "./campaigns/service";
+import { SupabaseCampaignStore } from "./campaigns/supabase-store";
+import { ContentReviewService } from "./content/review";
+import { SupabaseContentStore } from "./content/supabase-store";
 import type { Notice } from "./notifications/rules";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
@@ -59,6 +63,8 @@ export interface AiServices {
   memory: MemoryService;
   scheduler: SchedulerService;
   notifications: NotificationService;
+  campaigns: CampaignService;
+  content: ContentReviewService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -134,7 +140,34 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     notify,
     ownerReport: async (schedulerStatus) => postOwnerReport(await store.listAgentRuns(1000), notifications, schedulerStatus, now()),
   });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, audit, usage, providers: configs };
+  const contentStore = new SupabaseContentStore(db);
+  const content = new ContentReviewService({
+    store: contentStore,
+    context: platform.context,
+    audit,
+    now,
+    newId,
+    latestQuality: async (taskId) => {
+      const reviews = await platform.quality.history({ kind: "system" }, taskId);
+      const latest = [...reviews].sort((a, b) => b.attempt - a.attempt)[0];
+      return latest ? { status: latest.status, overall: latest.overall } : null;
+    },
+  });
+  const campaigns = new CampaignService({
+    store: new SupabaseCampaignStore(db),
+    audit,
+    now,
+    newId,
+    contentStatus: async (ids) => {
+      const out = new Map<string, string>();
+      for (const id of ids) {
+        const a = await contentStore.get(id);
+        if (a) out.set(id, a.status);
+      }
+      return out;
+    },
+  });
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

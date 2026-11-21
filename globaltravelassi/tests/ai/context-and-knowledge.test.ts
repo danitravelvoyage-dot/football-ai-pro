@@ -251,7 +251,7 @@ describe("knowledge base service", () => {
     const { service } = kbHarness();
     const store = (service as unknown as { deps: { store: MemoryKbStore } }).deps.store;
     for (let i = 0; i < KB_SCAN_LIMIT; i++) {
-      await store.insert({ category: "customer_faq", slug: `faq-${i}`, language: "fr", country: "all", title: "Question", body: "Réponse de test à relire.", officialSourceUrl: null, verifiedAt: null, reliabilityStatus: "unverified" }, "owner:owner-1", new Date().toISOString());
+      await store.insert({ category: "customer_faq", slug: `faq-${i}`, language: "fr", country: "all", title: "Question", body: "Réponse de test à relire.", officialSourceUrl: null, verifiedAt: null, reliabilityStatus: "unverified", tags: [] }, "owner:owner-1", new Date().toISOString());
     }
     await expect(service.forAgent("VisaResearchAgent", { country: "dz", language: "fr" })).rejects.toThrow("too large");
   });

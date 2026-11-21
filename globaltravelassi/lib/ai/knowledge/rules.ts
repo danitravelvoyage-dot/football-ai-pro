@@ -22,6 +22,7 @@ export const SOURCE_REQUIRED_CATEGORIES: readonly KbCategory[] = ["visa_requirem
 export const FRESHNESS_DAYS: Record<"verified_official" | "verified_internal", number> = { verified_official: 90, verified_internal: 180 };
 
 export const KB_BODY_LIMIT_FOR_AGENTS = 1_500;
+export const KB_MAX_TAGS = 10;
 
 export const kbEntryInputSchema = z
   .object({
@@ -39,6 +40,8 @@ export const kbEntryInputSchema = z
       .default(null),
     verifiedAt: z.string().datetime().nullable().default(null),
     reliabilityStatus: z.enum(RELIABILITY_STATUSES).default("unverified"),
+    /** Short lowercase labels for finding an entry. Never used to decide what an agent may read. */
+    tags: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,23}$/, { message: "Tags are 2 to 24 lowercase letters, digits or hyphens." })).max(KB_MAX_TAGS).default([]),
   })
   .superRefine((v, ctx) => {
     if (SOURCE_REQUIRED_CATEGORIES.includes(v.category) && !v.officialSourceUrl) {

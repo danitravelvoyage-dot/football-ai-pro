@@ -23,6 +23,8 @@ export default async function CommandCenterLayout({ children, params }: { childr
     { href: `${base}/monitor`, label: t.monitor.nav },
     { href: `${base}/scheduler`, label: t.schedulerUi.nav },
     { href: `${base}/notifications`, label: t.notificationsUi.nav },
+    { href: `${base}/campaigns`, label: t.campaignsUi.nav },
+    { href: `${base}/content`, label: t.contentUi.nav },
     { href: `${base}/memory`, label: t.memoryUi.nav.decisions },
     { href: `${base}/experiments`, label: t.memoryUi.nav.experiments },
     { href: `${base}/profile`, label: t.memoryUi.nav.profile },

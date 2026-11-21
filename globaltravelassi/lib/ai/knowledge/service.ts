@@ -3,6 +3,7 @@ import { assertNoPersonalData, PersonalDataError } from "../security/personal-da
 import { getAgent } from "../registry";
 import { assertToolAllowed, ToolPermissionError } from "../tools";
 import type { Actor, AgentKey } from "../types";
+import { searchEntries } from "./search";
 import { kbEntryInputSchema, selectForAgent, toAgentFact, type KbEntry, type KbEntryInput, type ReliabilityStatus } from "./rules";
 import type { KbStore } from "./store";
 
@@ -72,6 +73,19 @@ export class KbService {
     const updated = await this.deps.store.update(existing.id, existing.version, v, now);
     await this.audit(actor, "kb.updated", updated.id, { category: v.category, version: updated.version, reliability: v.reliabilityStatus });
     return updated;
+  }
+
+  /** Owner only. Finds entries by words, category, country, language, reliability or tag. Scans up to KB_SCAN_LIMIT entries. */
+  async search(actor: Actor, q: import("./search").KbSearch): Promise<KbEntry[]> {
+    if (actor.kind !== "owner") throw new KbForbiddenError();
+    const rows = await this.deps.store.list({ limit: KB_SCAN_LIMIT });
+    return searchEntries(rows, q).slice(0, 200);
+  }
+
+  /** Owner only. Earlier versions of an entry, kept by the database on each change. */
+  async history(actor: Actor, id: string) {
+    if (actor.kind !== "owner") throw new KbForbiddenError();
+    return this.deps.store.versions(id);
   }
 
   /** The owner records a review outcome. Verifying sets the date to now. Disputing or retiring removes the entry from agent use. */

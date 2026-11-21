@@ -5,6 +5,7 @@ import { ContextVersionConflictError, type ContextEntry, type ContextStore, type
 import type { ContextScope, ContextVisibility } from "../context/policy";
 import { KbVersionConflictError, type KbFilter, type KbStore } from "../knowledge/store";
 import type { KbCategory, KbEntry, KbEntryInput, ReliabilityStatus } from "../knowledge/rules";
+import type { KbVersion } from "../knowledge/store";
 import type { Country, Language } from "../types";
 
 type Row = Record<string, unknown>;
@@ -39,9 +40,24 @@ function toKb(row: Row): KbEntry {
     officialSourceUrl: (row.official_source_url as string | null) ?? null,
     verifiedAt: (row.verified_at as string | null) ?? null,
     reliabilityStatus: row.reliability_status as ReliabilityStatus,
+    tags: (row.tags as string[] | null) ?? [],
     version: row.version as number,
     createdBy: row.created_by as string,
     updatedAt: row.updated_at as string,
+  };
+}
+
+function toKbVersion(row: Row): KbVersion {
+  return {
+    entryId: row.entry_id as string,
+    version: row.version as number,
+    title: row.title as string,
+    body: row.body as string,
+    reliabilityStatus: row.reliability_status as string,
+    officialSourceUrl: (row.official_source_url as string | null) ?? null,
+    tags: (row.tags as string[] | null) ?? [],
+    replacedAt: row.replaced_at as string,
+    replacedBy: (row.replaced_by as string | null) ?? null,
   };
 }
 
@@ -150,6 +166,7 @@ export class SupabaseKbStore implements KbStore {
       official_source_url: entry.officialSourceUrl,
       verified_at: entry.verifiedAt,
       reliability_status: entry.reliabilityStatus,
+      tags: entry.tags,
     };
   }
 
@@ -170,6 +187,7 @@ export class SupabaseKbStore implements KbStore {
     if (patch.officialSourceUrl !== undefined) changes.official_source_url = patch.officialSourceUrl;
     if (patch.verifiedAt !== undefined) changes.verified_at = patch.verifiedAt;
     if (patch.reliabilityStatus !== undefined) changes.reliability_status = patch.reliabilityStatus;
+    if (patch.tags !== undefined) changes.tags = patch.tags;
     const { data, error } = await this.db
       .from("ai_kb_entries")
       .update(changes)
@@ -180,5 +198,12 @@ export class SupabaseKbStore implements KbStore {
     if (error) fail(error);
     if (!data) throw new KbVersionConflictError();
     return toKb(data as Row);
+  }
+
+  /** Earlier versions, kept by the database trigger from migration 0013. Newest first. */
+  async versions(id: string): Promise<KbVersion[]> {
+    const { data, error } = await this.db.from("ai_kb_entry_versions").select("*").eq("entry_id", id).order("seq", { ascending: false }).limit(100);
+    if (error) fail(error);
+    return ((data ?? []) as Row[]).map(toKbVersion);
   }
 }

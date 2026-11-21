@@ -1,7 +1,7 @@
 # GLOBALTRAVELASSI: project status and audit
 
 Status date: 2026-11-20. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0012 are all unapplied).
+No migration has been applied to any database (0002 to 0013 are all unapplied).
 
 ## Verification (this change)
 
@@ -9,7 +9,7 @@ No migration has been applied to any database (0002 to 0012 are all unapplied).
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 38 files, 527 tests, all passing (500 at the previous checkpoint, 435 before the scheduler) |
+| `npm test` (vitest) | 43 files, 580 tests, all passing (527 at the previous checkpoint, 435 before the scheduler) |
 | `npm run build` | passes; `/api/ai/scheduler` and `/[locale]/admin/command-center/scheduler` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
 | SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal |
@@ -27,6 +27,20 @@ Built and tested:
 5. **Scheduler and notifications.** A missing worker cannot notify from inside the scheduler. It shows on the pages, but no notice is sent yet. An independent check is required.
 
 Not built in this session: the inbox page, the scheduled owner report, scheduler-health notices from an independent check, campaign management, content review and approval dashboard, knowledge base admin forms, the marketing command center redesign, and the performance history chart.
+
+## Session 3 additions (notifications complete, campaigns, content review, knowledge admin, unified view)
+
+**Phase 2 (complete).** Inbox page with severity, type and unread filters, unread count, and owner-only mark-as-read (read-once). An independent watchdog endpoint raises a critical notice when the scheduler has not run. A daily owner report is written after each scheduler run. Trigger authentication is shared by the scheduler and the watchdog.
+
+**Phase 3 (campaigns, core).** Create, edit (name, goal, channel, dates; objective, KPIs and budget are fixed at creation), status lifecycle (draft to active, active to paused or finished, paused to active or finished), archive (not while active; hidden by default). Objectives only accept KPIs they measure. Agents and content are assigned. Launch needs at least one agent and every assigned content item approved. Spend is refused beyond the budget and before launch. KPI readings are owner-entered and never estimated. Every change is written to a campaign history table. Campaign execution outside the platform (ad accounts, publishing) is not connected.
+
+**Phase 4 (content review, core).** Content inbox showing each item, its latest quality review and its recent decisions. Approve, reject (reason required) and request revision (note required). A revision note is sent to the writing agent as team-visible context, versioned, and reaches the agent's next run. Approval does not publish: publishing still goes through the approval engine per task.
+
+**Phase 5 (knowledge base admin).** Owner search across title, body and tags, with category, country, language, reliability and tag filters. Tags (up to ten, lowercase). Create and edit through the existing save rule (same category, slug, language and country replaces content). Archive is the existing retire action; no hard delete. Version history is written by a database trigger on every content change. The trigger runs as its own definer, which was needed: without it the write was blocked by row-level security (found by test, fixed).
+
+**Phase 6 (unified view, partial).** The command center overview now shows real counts from each module (active campaigns, content awaiting review, unread notices, scheduler status, knowledge entries; unavailable shown as such) and links to every module. The existing executive, agent, task, approval, monitoring and memory pages are unchanged. There is no dedicated analytics or report page yet.
+
+**Not built in this session:** an automated test of the Supabase stores for campaigns, content review, notifications and knowledge versions (they are type-checked and their SQL is tested, but no store-level test exists); a rendered browser check of the new pages; campaign integration with external ad platforms; knowledge retrieval by tag for agents; a dedicated analytics and report page.
 
 ## Architecture (summary)
 
@@ -105,7 +119,7 @@ Priority order follows the brief's list.
 
 ## Completion
 
-Estimated **about 50%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward; the modules are still counted as partial until their owner-facing parts exist.
+Estimated **about 62%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward. Session 3 completed notifications and added campaigns, content review and knowledge admin. Partial modules still count at half weight, because the Supabase store paths are not yet store-tested and no rendered browser check has been done.
 
 ## Recommended next priorities
 
