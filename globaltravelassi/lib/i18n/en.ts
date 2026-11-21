@@ -227,6 +227,7 @@ export const en = {
     runs: "Runs",
     failures: "Failures",
     tasksTitle: "Task orchestration",
+    traceTitle: "Execution trace (newest runs)", traceHint: "Each run's steps, dependencies, reviews and handoffs between agents. Identifiers, statuses and codes only: no output text.", traceNoRuns: "No runs yet.", traceStep: "Step", traceAgent: "Agent", traceStatus: "Status", traceAttempts: "Attempts", traceDepends: "Depends on", traceReview: "Latest review", traceWaiting: "Waiting on", traceHandoffs: "Handoffs between agents", traceNoHandoffs: "No handoffs in this run.", traceConflicts: "Conflicting claims", traceNoConflicts: "No conflicting claims.",
     task: "Task",
     agent: "Agent",
     run: "Workflow",

@@ -47,3 +47,19 @@ describe("execution trace", () => {
     expect(JSON.stringify(buildRunTrace("run-1", withOutput, []))).not.toContain("private client text");
   });
 });
+
+describe("handoffs in the run trace", () => {
+
+  it("lists handoffs whose source task belongs to the run, oldest first", () => {
+    const tasks = [task({ id: "a", runId: "run-1", agent: "CRMAgent", status: "succeeded" }), task({ id: "b", runId: "run-1", agent: "SalesAgent", dependsOn: ["a"] })];
+    const trace = buildRunTrace("run-1", tasks, [], [
+      { fromAgent: "CRMAgent", toAgent: "SalesAgent", taskId: "a", at: "2026-11-21T10:05:00.000Z" },
+      { fromAgent: "CRMAgent", toAgent: "SalesAgent", taskId: "other-run-task", at: "2026-11-21T09:00:00.000Z" },
+    ]);
+    expect(trace.handoffs).toEqual([{ fromAgent: "CRMAgent", toAgent: "SalesAgent", taskId: "a", at: "2026-11-21T10:05:00.000Z" }]);
+  });
+
+  it("has no handoffs when none are supplied", () => {
+    expect(buildRunTrace("run-1", [task({ id: "a", runId: "run-1" })], []).handoffs).toEqual([]);
+  });
+});

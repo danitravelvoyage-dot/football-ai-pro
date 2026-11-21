@@ -371,6 +371,7 @@ export class Orchestrator {
         idempotencyKey: `task.succeeded:${task.id}`,
         correlationId: task.runId,
       });
+      await this.publishHandoffs(task);
       return "succeeded";
     } catch (error) {
       return this.handleFailure(task, error, startedAt);
@@ -598,6 +599,35 @@ export class Orchestrator {
   }
 
   /** Owner-only. Puts a failed task back in the queue. */
+  /**
+   * Owner only. Cancels the tasks of a run that have not started (pending, ready, blocked or failed). A task that is
+   * running finishes or fails on its own: an in-flight provider call cannot be stopped safely. A task waiting for an
+   * approval is left for the owner's decision. Returns what was cancelled and what was left, with the reason.
+   */
+  async cancelRun(actor: Actor, runId: string): Promise<{ cancelled: string[]; left: { taskId: string; reason: string }[] }> {
+    if (actor.kind !== "owner" || actor.id.trim().length === 0) throw new ForbiddenActorError("Only the owner can cancel a run.");
+    const nowIso = this.deps.now().toISOString();
+    const cancelled: string[] = [];
+    const left: { taskId: string; reason: string }[] = [];
+    for (const task of await this.deps.store.listTasksByRunIds([runId])) {
+      if (task.status === "pending" || task.status === "ready" || task.status === "blocked" || task.status === "failed") {
+        // Compare-and-set on the status read above, so a task another pass has just claimed is left alone.
+        try {
+          await this.deps.store.transitionTask(task.id, task.status, "cancelled", { lastError: "Cancelled by the owner." }, nowIso);
+          cancelled.push(task.id);
+        } catch {
+          left.push({ taskId: task.id, reason: "changed_during_cancel" });
+        }
+      } else if (task.status === "waiting_approval") {
+        left.push({ taskId: task.id, reason: "awaiting_owner_decision" });
+      } else {
+        left.push({ taskId: task.id, reason: task.status === "running" ? "running" : "already_finished" });
+      }
+    }
+    await this.audit(`owner:${actor.id}`, "run.cancelled", "workflow_run", runId, { cancelled: cancelled.length, left: left.length });
+    return { cancelled, left };
+  }
+
   async retryTask(taskId: string, actor: Actor): Promise<void> {
     if (actor.kind !== "owner") throw new ForbiddenActorError("Only the owner can retry a task.");
     const task = await this.deps.store.getTask(taskId);
@@ -642,6 +672,32 @@ export class Orchestrator {
   }
 
   /** Publishes an event. A refused or failed publish is logged and never changes or blocks task state. */
+  /**
+   * Hands a finished task's result to the agents that depend on it. One handoff event per direct dependent that a
+   * different agent will run. Handoffs are idempotent per (task, dependent) and carry only identifiers and a short
+   * fixed summary: no output text, so no customer or model content travels in the event.
+   */
+  private async publishHandoffs(task: TaskRecord): Promise<void> {
+    const tasks = await this.deps.store.listTasksByRunIds([task.runId]);
+    const dependents = tasks.filter((t) => t.dependsOn.includes(task.id) && t.agent !== task.agent);
+    for (const dependent of dependents) {
+      await this.publishSafely({
+        type: "agent.handoff",
+        producer: task.agent,
+        target: dependent.agent,
+        payload: {
+          fromAgent: task.agent,
+          toAgent: dependent.agent,
+          taskId: task.id,
+          summary: `${task.agent} finished step ${task.stepKey}. Its reviewed output is available to ${dependent.agent} in this run.`,
+        },
+        idempotencyKey: `agent.handoff:${task.id}:${dependent.id}`,
+        correlationId: task.runId,
+        hopCount: 1,
+      });
+    }
+  }
+
   private async publishSafely(input: PublishInput): Promise<void> {
     try {
       await this.deps.events.publish(input);

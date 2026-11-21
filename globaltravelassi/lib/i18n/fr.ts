@@ -229,6 +229,7 @@ export const fr: Dict = {
     runs: "Exécutions",
     failures: "Échecs",
     tasksTitle: "Orchestration des tâches",
+    traceTitle: "Trace d'exécution (derniers runs)", traceHint: "Étapes, dépendances, revues et transmissions entre agents de chaque run. Identifiants, statuts et codes uniquement : aucun texte produit.", traceNoRuns: "Aucun run pour le moment.", traceStep: "Étape", traceAgent: "Agent", traceStatus: "Statut", traceAttempts: "Tentatives", traceDepends: "Dépend de", traceReview: "Dernière revue", traceWaiting: "En attente de", traceHandoffs: "Transmissions entre agents", traceNoHandoffs: "Aucune transmission dans ce run.", traceConflicts: "Affirmations contradictoires", traceNoConflicts: "Aucune affirmation contradictoire.",
     task: "Tâche",
     agent: "Agent",
     run: "Workflow",

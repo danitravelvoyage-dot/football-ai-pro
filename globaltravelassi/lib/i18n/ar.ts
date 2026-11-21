@@ -229,6 +229,7 @@ export const ar: Dict = {
     runs: "التنفيذات",
     failures: "الإخفاقات",
     tasksTitle: "تنسيق المهام",
+    traceTitle: "سجل التنفيذ (أحدث التشغيلات)", traceHint: "خطوات كل تشغيل وتبعياته ومراجعاته وتسليماته بين العوامل. معرفات وحالات ورموز فقط، دون نص المخرجات.", traceNoRuns: "لا توجد تشغيلات بعد.", traceStep: "الخطوة", traceAgent: "العامل", traceStatus: "الحالة", traceAttempts: "المحاولات", traceDepends: "يعتمد على", traceReview: "آخر مراجعة", traceWaiting: "بانتظار", traceHandoffs: "التسليمات بين العوامل", traceNoHandoffs: "لا توجد تسليمات في هذا التشغيل.", traceConflicts: "ادعاءات متضاربة", traceNoConflicts: "لا توجد ادعاءات متضاربة.",
     task: "المهمة",
     agent: "الوكيل",
     run: "سير العمل",

@@ -1,15 +1,15 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21 (session 6). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0016 are all unapplied; 0012 was edited this session before being applied).
+Status date: 2026-11-21 (session 8). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+No migration has been applied to any database (0002 to 0016 are all unapplied). No migration was added in session 8.
 
-## Verification (session 7, production-readiness audit)
+## Verification (session 8, multi-agent intelligence)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 55 files, 741 tests, all passing (728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 58 files, 778 tests, all passing (741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
 | `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
@@ -163,6 +163,38 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 8 additions (multi-agent intelligence)
+
+**Audit before starting.**
+- **Handoffs:** the `agent.handoff` event type was declared, subscribed, validated and tested, but no production code published one. Agents passed work to each other only through task dependencies.
+- **Quality review:** one deterministic review per output. No second reviewer, no consensus, no conflict decision.
+- **Execution trace:** `buildRunTrace` existed but had no production caller, so no one could see it.
+- **Cancellation:** a waiting approval was cancelled on expiry, but an owner could not cancel a run.
+- **Already present, not rebuilt:** the event bus with validation and hop limits, the dependency graph with cycle detection, idempotent events, business memory and briefing, learning memory, provider timeouts, failure recovery for stale tasks, and retries with backoff.
+
+**Built and tested.**
+- **Handoffs between agents (wired into the engine).** When a step succeeds, the engine publishes one `agent.handoff` per direct dependent step that another agent will run. The event is idempotent per pair of tasks, and carries identifiers and a fixed summary, never the output. Verified on the sales workflow (CRM agent to sales agent): one handoff, received and remembered, none repeated on a second pass, none to the same agent.
+- **Execution trace (wired to the tasks page).** Each of the three newest runs shows its steps, agents, statuses, attempts, dependencies, latest review, handoffs and conflicting claims. Identifiers and codes only. Labels are in Arabic, French and English.
+- **Owner cancellation of a run.** Cancels tasks that have not started. A running task is reported as running and left to finish. A task waiting for an approval is left for the owner's decision. Agents and the system are refused. Audited with counts only.
+- **Consensus across independent reviewers (pure module, not yet called by the engine).** A reviewer's vote on its own output is excluded. One vote per reviewer. At least two independent reviews are needed, otherwise the result escalates to the owner. A veto reviewer's rejection is final. Disagreement (one approves, another rejects) escalates rather than being decided by majority. Any revision request sends the output back. Weights are configurable.
+- **Review panel (pure module, not yet called by the engine).** Two independent votes per output: the full quality controller, and a compliance lens made of the policy and brand checks. A blocking policy breach is a compliance rejection, not an ordinary revision.
+- **Conflict resolution (pure module).** Only the owner can resolve a conflict between agents' claims, and a resolution is final.
+- **Capability-based routing (pure module, not yet used for task creation).** Routes a capability to the available agent with the least open work, with a fixed tie-break. Reassignment is refused for capabilities that can act outside the platform (publishing, customer messages, website changes).
+
+**Tests added.** 5 handoff tests on the real engine; 26 consensus, conflict, routing and panel tests; 2 trace tests; 4 cancellation tests. The consensus tests include the independence, owner-only and no-output-text checks.
+
+**Not done, and why.**
+- **The consensus and panel are not part of the engine's quality gate.** Wiring them in would change the outcome of every agent output, and would send compliance outputs to the owner, because the compliance agent cannot review its own work. That is an owner decision, so I have not made it.
+- **Routing does not choose the agent for any task yet.** The templates still name the agent for each step.
+- **Conflicts are not stored.** The conflict record and its owner decision exist as pure functions. A table and an owner screen are needed.
+- **Owner cancellation has no button yet.** It exists as a method only.
+- **Running tasks cannot be cancelled.** An in-flight model call cannot be stopped safely.
+- **Agent-to-agent conversation is not built.** Handoffs are one-way notices attached to finished work. Agents do not ask each other questions.
+- **Weighted consensus is configured in code,** not by the owner in the interface.
+- **Not run against a real model.** Every agent test uses the mock provider, and the mock is off by default now (see session 7).
+
+**Autonomous CEO** has not been started, as the brief asks. Its prerequisites are the routing and consensus wiring above, and an owner decision on which decisions it may take alone.
 
 ## Session 7 additions (production-readiness audit)
 

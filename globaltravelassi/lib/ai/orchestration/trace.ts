@@ -35,9 +35,19 @@ export interface TraceConflict {
   codes: string[];
 }
 
+/** A handoff between two agents in a run. Identifiers and times only: the summary text is not carried into the trace. */
+export interface HandoffFact {
+  fromAgent: string;
+  toAgent: string;
+  taskId: string;
+  at: string;
+}
+
 export interface RunTrace {
   runId: string;
   steps: TraceStep[];
+  /** Handoffs whose source task belongs to this run, oldest first. */
+  handoffs: HandoffFact[];
   /** Steps whose dependencies are not all succeeded yet, so they are waiting on them. */
   waitingOn: { taskId: string; missing: string[] }[];
   conflicts: TraceConflict[];
@@ -46,7 +56,7 @@ export interface RunTrace {
 
 const CONFLICT_CODE = "conflicting_claims";
 
-export function buildRunTrace(runId: string, tasks: TaskRecord[], reviews: ReviewFact[]): RunTrace {
+export function buildRunTrace(runId: string, tasks: TaskRecord[], reviews: ReviewFact[], handoffs: HandoffFact[] = []): RunTrace {
   const run = tasks.filter((t) => t.runId === runId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.stepKey.localeCompare(b.stepKey));
   const byId = new Map(run.map((t) => [t.id, t]));
   const reviewsOf = (taskId: string) => reviews.filter((r) => r.taskId === taskId).sort((a, b) => a.attempt - b.attempt);
@@ -77,9 +87,15 @@ export function buildRunTrace(runId: string, tasks: TaskRecord[], reviews: Revie
     .filter((r) => byId.has(r.taskId) && r.codes.includes(CONFLICT_CODE))
     .map((r) => ({ taskId: r.taskId, agent: byId.get(r.taskId)!.agent, attempt: r.attempt, codes: r.codes }));
 
+  const runHandoffs = handoffs
+    .filter((h) => byId.has(h.taskId))
+    .map((h) => ({ fromAgent: h.fromAgent, toAgent: h.toAgent, taskId: h.taskId, at: h.at }))
+    .sort((a, b) => a.at.localeCompare(b.at) || a.taskId.localeCompare(b.taskId));
+
   return {
     runId,
     steps,
+    handoffs: runHandoffs,
     waitingOn,
     conflicts,
     totals: {

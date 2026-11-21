@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
+import { getDictionary, isLocale, formatDateTime, type Locale } from "@/lib/i18n";
 import { loadCommandCenter } from "@/lib/ai/command-center/load";
 import { groupTasksByRun, progressOf, sortTasks, truncate } from "@/lib/ai/command-center/view";
 import { AGENT_REGISTRY } from "@/lib/ai/registry";
@@ -92,6 +92,48 @@ export default async function TasksPage({ params }: { params: Promise<{ locale: 
             })}
           </DataTable>
         )}
+      </Panel>
+
+      <Panel title={t.traceTitle}>
+        <p className="mb-4 text-sm leading-relaxed text-navy-600">{t.traceHint}</p>
+        {state.traces.length === 0 ? <p className="text-sm text-navy-600">{t.traceNoRuns}</p> : null}
+        {state.traces.map((trace) => (
+          <div key={trace.runId} className="mb-8 last:mb-0">
+            <h3 className="mb-2 font-mono text-xs text-navy-700" dir="ltr">{trace.runId}</h3>
+            <DataTable head={[t.traceStep, t.traceAgent, t.traceStatus, t.traceAttempts, t.traceDepends, t.traceReview]}>
+              {trace.steps.map((step) => (
+                <tr key={step.taskId} className="align-top hover:bg-navy-50/50">
+                  <td className="px-4 py-3 font-mono text-xs text-navy-800" dir="ltr">{step.stepKey}</td>
+                  <td className="px-4 py-3 text-sm text-navy-800" dir="ltr">{step.agent}</td>
+                  <td className="px-4 py-3"><TaskBadge status={step.status} dict={dict} /></td>
+                  <td className="px-4 py-3 text-sm text-navy-800">{step.attempts}/{step.maxAttempts}</td>
+                  <td className="px-4 py-3 text-xs text-navy-700" dir="ltr">{step.dependsOn.map((d) => titleById.get(d) ?? d.slice(0, 8)).join(", ") || "—"}</td>
+                  <td className="px-4 py-3 text-sm text-navy-800">{step.quality.latestStatus ?? "—"}</td>
+                </tr>
+              ))}
+            </DataTable>
+            <p className="mt-3 text-sm font-semibold text-navy-900">{t.traceHandoffs}</p>
+            {trace.handoffs.length === 0 ? (
+              <p className="text-sm text-navy-600">{t.traceNoHandoffs}</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-sm text-navy-800">
+                {trace.handoffs.map((h) => (
+                  <li key={`${h.taskId}-${h.toAgent}`} dir="ltr">{h.fromAgent} → {h.toAgent} · {formatDateTime(h.at, locale)}</li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-sm font-semibold text-navy-900">{t.traceConflicts}</p>
+            {trace.conflicts.length === 0 ? (
+              <p className="text-sm text-navy-600">{t.traceNoConflicts}</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-sm text-navy-800">
+                {trace.conflicts.map((c, i) => (
+                  <li key={`${c.taskId}-${i}`} dir="ltr">{c.agent} · {c.codes.join(", ")}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
       </Panel>
     </>
   );
