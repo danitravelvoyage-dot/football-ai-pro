@@ -772,3 +772,50 @@ Scope: customer-facing travel and visa website only. AI back-office migrations (
 ### Staging decision
 
 NO-GO. The redirect bypasses are fixed and tested. Staging still needs the logged-in browser tests, the CSP enforcement path, the customer notification decision and the approvals listed in the pre-staging readiness report.
+
+## Phase 2: nonce-based Content-Security-Policy (local, not deployed)
+
+Scope: customer website only. No database, migration, staging or deployment work. CSP stays in report-only mode.
+
+### Status
+
+| Item | Status | Evidence |
+|---|---|---|
+| `'unsafe-inline'` removed from `script-src` | DONE (production) | Unit test; smoke check "unsafe-inline in script-src" (7 routes). `'unsafe-eval'` only in development. |
+| Per-request nonce | DONE | Generated in middleware. Two requests get different nonces. Every inline script in the HTML carries its own response's nonce (smoke: 7 routes). |
+| Nonce reaches Next.js | DONE | Policy set on the request; Next.js parser checked in tests (`getScriptNonceFromHeader`). |
+| `style-src` `'unsafe-inline'` | OPEN (accepted, documented) | React and Next.js emit inline styles. Next hardening item. |
+| Enforcement | NOT ENABLED | Report-only. Enforcement dry run in smoke test: pages hydrate with no violations (en, fr, ar). |
+| Logged-in flows under CSP | NOT VERIFIED | Need a Supabase project (not created). |
+
+### Changes
+
+- `lib/security/csp.ts` (new): `generateNonce`, `buildCsp`, `supabaseOrigins`.
+- `middleware.ts`: builds the policy per request; sets it on the request (for Next.js) and on the response (report-only header). Redirect responses and the scheduler trigger carry it too.
+- `next.config.mjs`: static CSP removed (it would conflict with the per-request policy). Other security headers unchanged.
+- `tests/security/csp-nonce.test.ts` (new): nonce format and uniqueness, policy parsed by Next.js, no `'unsafe-inline'` in `script-src`, `'unsafe-eval'` only in development, Supabase origins, per-request nonce on response and request, client-supplied policy replaced.
+- `tests/browser/smoke.mjs`: nonce check across seven routes and two requests; enforcement dry run in en, fr and ar.
+- `docs/security/CONTENT_SECURITY_POLICY.md`: rewritten for the nonce design, external origins, and the path to enforcement.
+
+### Verification
+
+- `npm run verify`: exit code 0. Lint, typecheck, 1329 tests passed (3 skipped, unchanged), production build. Route table: every HTML route is dynamic.
+- `npm run test:browser`: 26 of 26 checks passed.
+- Negative controls (page code, under the enforced policy): an inline `onerror` handler and a string passed to `setTimeout` were blocked and reported.
+- A Playwright-injected script was not blocked. This is a limit of the probe, not of the policy (see the CSP doc, "A note on test controls").
+
+### Violations
+
+- None under the report-only policy on the public and auth pages (en, fr, ar).
+- Only violation seen during testing: the deliberate blocked image in the probe.
+
+### Remaining risks
+
+- `style-src 'unsafe-inline'`.
+- Logged-in pages and server-action forms are not browser-tested under CSP.
+- `NEXT_PUBLIC_SUPABASE_URL` unset in this sandbox: the wildcard origin was used. Staging and production builds must set it.
+- No violation-collection endpoint.
+
+### Staging decision
+
+Enforcement stays off. The next gate is staging with the logged-in flows, which needs owner approval for a Supabase staging project. Enforcement after that run, with the remaining violations cleared.

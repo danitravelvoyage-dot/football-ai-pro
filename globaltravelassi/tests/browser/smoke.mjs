@@ -155,6 +155,64 @@ async function main() {
       }
       check("no CSP violations on public and auth pages (en, fr, ar)", cspViolations.length === 0, cspViolations.slice(0, 3).join(" | ") || "0 violations");
 
+      // Nonce-based script policy: every inline script in the HTML carries the nonce of its own response, the policy has no
+      // unsafe-inline in script-src, and a second request gets a different nonce. JSON-LD blocks are data, not scripts.
+      const nonceRoutes = ["/en", "/fr", "/ar", "/en/auth/login", "/fr/auth/register", "/ar/auth/forgot", "/en/this-page-does-not-exist"];
+      const nonceProblems = [];
+      const nonceFor = async (path) => {
+        const res = await fetch(`${base}${path}`, { redirect: "manual" });
+        const html = await res.text();
+        const header = res.headers.get("content-security-policy-report-only") ?? "";
+        return { header, html, nonce: (header.match(/'nonce-([^']+)'/) ?? [])[1] };
+      };
+      for (const route of nonceRoutes) {
+        const { header, html, nonce } = await nonceFor(route);
+        if (!nonce) {
+          nonceProblems.push(`${route}: no nonce in policy`);
+          continue;
+        }
+        const scriptSrc = header.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src")) ?? "";
+        if (scriptSrc.includes("'unsafe-inline'")) nonceProblems.push(`${route}: unsafe-inline in script-src`);
+        const inline = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]).filter((attrs) => !/\bsrc=/.test(attrs) && !/application\/ld\+json/.test(attrs));
+        if (inline.length === 0) nonceProblems.push(`${route}: no inline scripts found (check did not run)`);
+        for (const attrs of inline) if (!attrs.includes(`nonce="${nonce}"`)) nonceProblems.push(`${route}: inline script without this response's nonce`);
+      }
+      const first = await nonceFor("/en");
+      const second = await nonceFor("/en");
+      if (first.nonce === second.nonce) nonceProblems.push("nonce is the same across two requests");
+      check(`every inline script carries its response nonce; nonces differ per request (${nonceRoutes.length} routes)`, nonceProblems.length === 0, nonceProblems.slice(0, 3).join(" | ") || "ok");
+
+      // Enforcement dry run: the same pages with the policy enforced instead of reported. Hydration is proven by the
+      // Next.js payload being present, which only happens when its inline scripts run. Violations are collected as well.
+      const enforceChecks = [];
+      for (const locale of ["en", "fr", "ar"]) {
+        const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+        const pageErrors = [];
+        page.on("pageerror", (e) => pageErrors.push(e.message));
+        await page.addInitScript(() => {
+          window.__csp = [];
+          document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`));
+        });
+        await page.route("**/*", async (route) => {
+          if (route.request().resourceType() !== "document") return route.continue();
+          const response = await route.fetch();
+          const headers = { ...response.headers() };
+          const reportOnly = headers["content-security-policy-report-only"];
+          delete headers["content-security-policy-report-only"];
+          if (reportOnly) headers["content-security-policy"] = reportOnly;
+          await route.fulfill({ response, headers });
+        });
+        await page.goto(`${base}/${locale}/auth/login`, { waitUntil: "load" });
+        const hydrated = await page
+          .waitForFunction(() => Array.isArray(window.__next_f) && window.__next_f.length > 0, null, { timeout: 15_000 })
+          .then(() => true, () => false);
+        const violations = await page.evaluate(() => window.__csp);
+        enforceChecks.push({ locale, hydrated, violations, pageErrors });
+        await page.close();
+      }
+      const enforceFailures = enforceChecks.filter((c) => !c.hydrated || c.violations.length > 0 || c.pageErrors.length > 0);
+      check("policy enforced (dry run): pages hydrate with no violations or page errors (en, fr, ar)", enforceFailures.length === 0, enforceFailures.map((c) => `${c.locale}: hydrated=${c.hydrated} violations=${c.violations.join(",") || "none"} errors=${c.pageErrors.length}`).join(" | ") || "ok");
+
       // Phone width: no horizontal page scroll on the home page.
       const phone = await browser.newPage({ viewport: { width: 375, height: 760 }, isMobile: true });
       await phone.goto(`${base}/en`, { waitUntil: "domcontentloaded" });
