@@ -337,6 +337,7 @@ export const fr: Dict = {
       errorGeneric: "Le calendrier n'a pas pu être enregistré. Réessayez.",
     },
     notificationsUi: {
+      dailyReports: "Rapports commerciaux du jour", dailyReportsHint: "Génère les notifications du jour sur les ventes, le marketing et les clients, avec des recommandations fondées sur des règles, à partir des données enregistrées. Chaque type est publié une fois par jour. Rien n'est envoyé à un client.", generateReports: "Générer les rapports du jour", reportsPublished: "Rapports publiés dans la boîte de réception.",
       nav: "Notifications",
       hint: "Avis de la plateforme : tâches en échec, travail planifié en retard, planificateur absent, résumé quotidien des agents et rapport du propriétaire. Marquer un avis comme lu ne change rien d'autre.",
       unreadCount: "Non lues",
@@ -361,7 +362,7 @@ export const fr: Dict = {
       errorUnauthorized: "Connectez-vous en tant que propriétaire pour continuer.",
       errorGeneric: "L'avis n'a pas pu être mis à jour. Réessayez.",
       severities: { critical: "Critique", warning: "Alerte", info: "Information" },
-      kinds: { task_failed: "Tâche en échec", scheduler_unhealthy: "Travail en retard", scheduler_missing: "Planificateur inactif", agent_summary: "Résumé des agents", owner_report: "Rapport du propriétaire" },
+      kinds: { task_failed: "Tâche en échec", scheduler_unhealthy: "Travail en retard", scheduler_missing: "Planificateur inactif", agent_summary: "Résumé des agents", owner_report: "Rapport du propriétaire", sales_report: "Rapport commercial", marketing_report: "Rapport marketing", customer_alerts: "Alertes clients", strategy_recommendations: "Recommandations" },
     },
     crmUi: {
       nav: "CRM",

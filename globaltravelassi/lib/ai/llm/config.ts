@@ -36,7 +36,16 @@ export function loadProviderConfig(env: Record<string, string | undefined>): Pro
   const paidApproved = (env.AI_OWNER_APPROVED_PAID_PROVIDERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
   const providers: ProviderConfig[] = [
-    { id: "mock", kind: "mock", costTier: "free", enabled: true, ownerApproved: true, dailyRequestLimit: Number.MAX_SAFE_INTEGER },
+    // The mock returns placeholder text. It is off unless a developer turns it on, and it can never run in production.
+    // With no real provider configured, every agent task fails honestly instead of appearing to succeed.
+    {
+      id: "mock",
+      kind: "mock",
+      costTier: "free",
+      enabled: env.AI_MOCK_ENABLED === "true" && env.NODE_ENV !== "production",
+      ownerApproved: true,
+      dailyRequestLimit: Number.MAX_SAFE_INTEGER,
+    },
     {
       id: "local-ollama",
       kind: "openai-compatible",

@@ -6,6 +6,7 @@ import { loadInbox } from "@/lib/ai/notifications/load";
 import { NOTICE_KINDS, type Severity, type NoticeKind } from "@/lib/ai/notifications/rules";
 import { markNotificationReadAction } from "@/lib/actions/notifications";
 import { ActionForm } from "@/components/forms/ActionForm";
+import { generateDailyReportsAction } from "@/lib/actions/business";
 import { SelectField } from "@/components/forms/Fields";
 import { DataTable, Panel } from "@/components/admin/AdminUI";
 import { LoadState } from "@/components/admin/command-center/Parts";
@@ -43,6 +44,13 @@ export default async function NotificationsPage({ params, searchParams }: { para
       <p className="text-sm text-navy-800">
         {n.unreadCount}: <span className="font-semibold">{state.unread}</span>
       </p>
+
+      <Panel title={n.dailyReports}>
+        <p className="mb-4 text-sm leading-relaxed text-navy-600">{n.dailyReportsHint}</p>
+        <ActionForm action={generateDailyReportsAction} messages={{ ...formMessages(dict), saved: n.reportsPublished }} submitLabel={n.generateReports} pendingLabel={dict.common.loading} submitVariant="navy">
+          <></>
+        </ActionForm>
+      </Panel>
 
       <Panel title={n.filters}>
         <form method="get" className="grid gap-4 sm:grid-cols-3">

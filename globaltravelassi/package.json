@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "test:browser": "node tests/browser/smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

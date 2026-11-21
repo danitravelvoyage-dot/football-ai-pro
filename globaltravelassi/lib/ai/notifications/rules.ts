@@ -7,7 +7,7 @@ import type { SchedulerHealth } from "../scheduler/service";
  * Every notice has a dedupe key. The same condition in the same window (one task, one day) yields the same
  * key, so repeated checks never flood the owner's inbox.
  */
-export const NOTICE_KINDS = ["task_failed", "scheduler_unhealthy", "scheduler_missing", "agent_summary", "owner_report"] as const;
+export const NOTICE_KINDS = ["task_failed", "scheduler_unhealthy", "scheduler_missing", "agent_summary", "owner_report", "sales_report", "marketing_report", "customer_alerts", "strategy_recommendations"] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 export type Severity = "info" | "warning" | "critical";
 

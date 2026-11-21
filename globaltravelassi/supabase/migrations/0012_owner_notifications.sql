@@ -8,7 +8,7 @@
 create table if not exists public.ai_owner_notifications (
   id uuid primary key default gen_random_uuid(),
   dedupe_key text not null unique check (char_length(dedupe_key) between 1 and 160),
-  kind text not null check (kind in ('task_failed', 'scheduler_unhealthy', 'scheduler_missing', 'agent_summary', 'owner_report')),
+  kind text not null check (kind in ('task_failed', 'scheduler_unhealthy', 'scheduler_missing', 'agent_summary', 'owner_report', 'sales_report', 'marketing_report', 'customer_alerts', 'strategy_recommendations')),
   severity text not null check (severity in ('info', 'warning', 'critical')),
   title text not null check (char_length(title) between 1 and 160),
   body text not null check (char_length(body) between 1 and 1000),

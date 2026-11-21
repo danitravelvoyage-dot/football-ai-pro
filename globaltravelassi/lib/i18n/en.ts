@@ -335,6 +335,7 @@ export const en = {
       errorGeneric: "The schedule could not be saved. Try again.",
     },
     notificationsUi: {
+      dailyReports: "Daily business reports", dailyReportsHint: "Builds today's sales, marketing and customer-alert notices, plus rule-based recommendations, from stored records. Each kind is posted once per day. Nothing is sent to a customer.", generateReports: "Generate today's reports", reportsPublished: "Reports posted to the inbox.",
       nav: "Notifications",
       hint: "Notices from the platform: failed tasks, overdue scheduled work, a missing scheduler, the daily agent summary and the owner report. Marking a notice as read does not change anything else.",
       unreadCount: "Unread",
@@ -359,7 +360,7 @@ export const en = {
       errorUnauthorized: "Sign in as the owner to continue.",
       errorGeneric: "The notice could not be updated. Try again.",
       severities: { critical: "Critical", warning: "Warning", info: "Information" },
-      kinds: { task_failed: "Task failed", scheduler_unhealthy: "Overdue work", scheduler_missing: "Scheduler not running", agent_summary: "Agent summary", owner_report: "Owner report" },
+      kinds: { task_failed: "Task failed", scheduler_unhealthy: "Overdue work", scheduler_missing: "Scheduler not running", agent_summary: "Agent summary", owner_report: "Owner report", sales_report: "Sales report", marketing_report: "Marketing report", customer_alerts: "Customer alerts", strategy_recommendations: "Recommendations" },
     },
     crmUi: {
       nav: "CRM",

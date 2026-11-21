@@ -337,6 +337,7 @@ export const ar: Dict = {
       errorGeneric: "تعذّر حفظ الجدول. حاول مرة أخرى.",
     },
     notificationsUi: {
+      dailyReports: "التقارير اليومية", dailyReportsHint: "ينشئ إشعارات اليوم عن المبيعات والتسويق وتنبيهات العملاء، مع توصيات قائمة على قواعد، من السجلات المحفوظة. ينشر كل نوع مرة واحدة في اليوم. لا يُرسل شيء إلى أي عميل.", generateReports: "إنشاء تقارير اليوم", reportsPublished: "تم نشر التقارير في الوارد.",
       nav: "الإشعارات",
       hint: "إشعارات المنصة: المهام الفاشلة، والأعمال المجدولة المتأخرة، وتوقف المجدول، والملخص اليومي للعوامل، وتقرير المالك. تحديد الإشعار كمقروء لا يغيّر شيئاً آخر.",
       unreadCount: "غير المقروءة",
@@ -361,7 +362,7 @@ export const ar: Dict = {
       errorUnauthorized: "سجّل الدخول بحساب المالك للمتابعة.",
       errorGeneric: "تعذّر تحديث الإشعار. حاول مرة أخرى.",
       severities: { critical: "حرج", warning: "تنبيه", info: "معلومة" },
-      kinds: { task_failed: "مهمة فاشلة", scheduler_unhealthy: "أعمال متأخرة", scheduler_missing: "المجدول متوقف", agent_summary: "ملخص العوامل", owner_report: "تقرير المالك" },
+      kinds: { task_failed: "مهمة فاشلة", scheduler_unhealthy: "أعمال متأخرة", scheduler_missing: "المجدول متوقف", agent_summary: "ملخص العوامل", owner_report: "تقرير المالك", sales_report: "تقرير المبيعات", marketing_report: "تقرير التسويق", customer_alerts: "تنبيهات العملاء", strategy_recommendations: "التوصيات" },
     },
     crmUi: {
       nav: "إدارة العملاء",

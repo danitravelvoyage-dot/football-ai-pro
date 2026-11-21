@@ -1,15 +1,16 @@
 # GLOBALTRAVELASSI: project status and audit
 
 Status date: 2026-11-21 (session 6). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0016 are all unapplied).
+No migration has been applied to any database (0002 to 0016 are all unapplied; 0012 was edited this session before being applied).
 
-## Verification (session 6, competitor intelligence phase 1)
+## Verification (session 7, production-readiness audit)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 54 files, 728 tests, all passing (669 at the session 5 checkpoint, 616 at session 4, 435 before the scheduler) |
+| `npm test` (vitest) | 55 files, 741 tests, all passing (728 at session 6, 669 at session 5, 616 at session 4) |
+| Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
 | `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
 | SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal; 17 CRM tests covering the stage guard, database-written history, append-only records, application-link rule, one open follow-up per lead, and operator, ordinary-user and anonymous isolation |
@@ -162,6 +163,31 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 7 additions (production-readiness audit)
+
+**Defect fixed: fake agent execution.** The mock provider was enabled by default and always first in the chain. With no real provider configured, every agent task succeeded with the workflow's placeholder output (for example "Mock follow-up." and `draft_ref: "mock"`), which was stored, reviewed and offered as a draft. The mock is now off unless `AI_MOCK_ENABLED=true` and `NODE_ENV` is not `production`. With no real provider, tasks fail honestly with "no providers configured". Tests cover the default and the production refusal.
+
+**Added: daily business reports.** Owner-only. Builds four notices from stored rows, once per day each: sales (leads, new in 24 hours and 7 days, open, converted, lost, follow-ups waiting, scheduled and overdue), marketing (active and paused campaigns, KPIs with and without a reading), customer alerts (hot leads idle two days, high-intent leads without a follow-up, overdue scheduled follow-ups), and rule-based recommendations, each with its evidence. Notices carry counts and ids, never names. Recommendations are labelled rule-based, not model output. Available from the notifications page ("Generate today's reports"). The notice kinds were added to migration 0012, which is not yet applied.
+
+**Removed:** the empty `lib/ai/agents` directory.
+
+**Audit results.**
+- Admin server actions: all eight in `lib/actions/admin.ts` check for an active admin profile. The owner-session actions (`ai`, `campaigns`, `crm`, `memory`, `knowledge`, `notifications`, `scheduler`) call the owner check. Customer actions bind records to the signed-in user and rely on row-level policies (checked in migration 0001).
+- No service-role key is used. No secret-shaped string appears in source. The only `dangerouslySetInnerHTML` is static structured data on the home page.
+- Error and loading boundaries exist for the site and for the command center.
+
+**Not verified, and why.**
+- **Real model calls and token and cost accounting against a real model:** no key is available. Only the mock path and the local test server have run.
+- **Admin dashboard pages with data:** these need a signed-in owner and a live database. The browser test covers public pages and the redirect only.
+- **Scheduled daily reports:** the scheduler runs as the operator account, which by design cannot read CRM data. The reports are generated from the owner's session. A scheduled version needs a decision (owner-scoped report functions, or a separate reviewed role). It is not built.
+
+**Still open from the audit.**
+- **Conflict resolution:** cross-agent conflicts are detected and shown in the execution trace. Nothing resolves them.
+- **CEO orchestration:** `lib/ai/coo.ts` is a deterministic planner and report builder. It does not assign work autonomously.
+- **Delegation and specialist review:** the task dependency graph and the quality reviews exist. Agent-to-agent communication and quality consensus do not.
+- **Earlier findings still open:** S1 (quota counter race), S2 (breaker state per process), S3 (operator write on `ai_campaigns` from migration 0002).
+- **Production readiness:** not ready. Blockers are listed under External blockers.
 
 ## Session 6 additions (competitor intelligence, phase 1)
 

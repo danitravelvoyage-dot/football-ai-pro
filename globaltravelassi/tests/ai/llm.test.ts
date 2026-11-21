@@ -18,10 +18,15 @@ const base = (id: string, costTier: ProviderConfig["costTier"], extra: Partial<P
 });
 
 describe("provider configuration", () => {
-  it("defaults to mock only: no local, hosted or paid provider is enabled", () => {
+  it("enables no provider by default: the mock is off and nothing fakes an agent run", () => {
     const providers = loadProviderConfig({});
-    const enabled = providers.filter((p) => p.enabled).map((p) => p.id);
-    expect(enabled).toEqual(["mock"]);
+    expect(providers.filter((p) => p.enabled)).toEqual([]);
+  });
+
+  it("enables the mock only for a developer outside production", () => {
+    expect(loadProviderConfig({ AI_MOCK_ENABLED: "true" }).find((p) => p.id === "mock")?.enabled).toBe(true);
+    expect(loadProviderConfig({ AI_MOCK_ENABLED: "true", NODE_ENV: "production" }).find((p) => p.id === "mock")?.enabled).toBe(false);
+    expect(loadProviderConfig({ AI_MOCK_ENABLED: "false" }).find((p) => p.id === "mock")?.enabled).toBe(false);
   });
 
   it("a paid provider stays disabled unless the owner lists it", () => {
