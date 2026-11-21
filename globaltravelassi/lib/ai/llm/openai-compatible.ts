@@ -41,6 +41,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
           model: this.options.model,
           temperature: 0.2,
           max_tokens: request.maxOutputTokens,
+          ...(request.jsonMode ? { response_format: { type: "json_object" } } : {}),
           messages: [
             { role: "system", content: request.system },
             { role: "user", content: request.user },

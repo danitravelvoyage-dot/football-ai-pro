@@ -9,7 +9,7 @@ No migration has been applied to any database (0002 to 0017 are all unapplied). 
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 67 files, 876 passing and 1 skipped (the opt-in live model test), all passing (870 at session 10, 838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 67 files, 877 passing and 2 skipped (the opt-in live model tests), all passing (870 at session 10, 838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
 | Browser (`npm run test:browser`, Chromium, production build) | 22 of 22 checks pass: trigger refusals; public home in en, fr and ar with correct direction and no errors; all 28 admin pages redirect to sign-in in en, fr and ar (84 redirects); sign-in, register and forgot forms render in all three locales; no horizontal scroll at 375 px |
 | `npm run verify` | passes: lint, typecheck, unit and integration tests, production build (includes `/[locale]/admin/command-center/conflicts`) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
@@ -168,19 +168,30 @@ Findings and status:
 
 ## Session 11 additions (local AI activation)
 
-**Status at the end of this session: no model has run. No inference result exists.**
+**Result: a real local model runs, and one agent question is answered by it. The research agent's full contract is not met by the 0.5B model.**
 
-- **Installation: not installed.** Ollama is not on this machine, and no model file exists. Hardware is adequate: 4 CPUs, 16 GB RAM, 28 GB free disk.
-- **Network: approved, then reachable.** The first attempt to reach `ollama.com` and `huggingface.co` was refused by the egress policy (403). A personal environment, "football-ai-pro (local AI download)", was proposed and approved by the owner, allowing only `ollama.com` and `registry.ollama.ai`. Both now answer. Nothing has been downloaded or installed yet.
-- **Installation needs owner approval** (writes software and fetches about 400 MB). Commands are in the final report.
-- **Audit defect fixed: the mock could answer in place of a real model.** The mock was first in the provider chain. With `AI_MOCK_ENABLED=true` and a local model enabled, every request was answered with placeholder text. The mock is now enabled only when no real provider is enabled.
-- **Model default:** `AI_LOCAL_MODEL` now defaults to `qwen2.5:0.5b`. The local provider is off unless `AI_LOCAL_ENABLED=true`.
-- **Tests added:**
-  - A down local model returns no output, even with the mock flag set.
-  - An empty reply and a reply with no JSON are rejected.
-  - A hosted-provider key never reaches the local endpoint.
-  - A live inference test, opt-in with `LOCAL_AI_LIVE=1` (`npm run test:local-model`). It is skipped in `npm run verify`. Run without a server, it fails with "No LLM provider is available" and produces no output.
-- **Configuration:** `.env.example` lists the local settings, with placeholders only and no secrets.
+**Environment and installation (owner-approved).**
+- Egress policy first refused `ollama.com` and `huggingface.co` (403). The owner approved a personal environment, "football-ai-pro (local AI download)", allowing `ollama.com` and `registry.ollama.ai`.
+- Ollama 0.40.17 installed with the official script, after `zstd` was installed as its prerequisite (both approved).
+- The Ollama server runs in the background in this container (no systemd). Model `qwen2.5:0.5b` pulled: 397 MB, Q4_K_M, context 32768.
+
+**Real inference results (measured, not estimated).**
+- Agent question, CRM agent, through the real gateway and adapter: delivered, approved by both reviewers, in 543 to 1,002 ms. The answer was `"The new family visa enquiry should start in the 'Boundaries' stage."`. The stage is wrong. The gate checks structure, policy and claims, not whether an answer is correct.
+- Research agent, MarketResearchAgent: refused by the output contract on every run, with `sources` containing text that is not a URL. The refusal is the correct behaviour: no output is stored. Token usage reported by the server: 136 in, 178 to 219 out. Time to refusal: about 1.7 to 2.4 s.
+- Raw JSON-mode check outside the platform: a single answer-shaped object was returned correctly in three of three requests, using about 7 output tokens.
+
+**Defects fixed.**
+1. The mock provider could answer in place of a real model when both were enabled (see the earlier entry in this section).
+2. Agent requests did not ask the endpoint for JSON. Agent requests now set `response_format: json_object`, so the endpoint is asked for one JSON object. Plain requests are unchanged. Tested.
+3. The agent-question request put the question inside the input object, where the model echoed the input back instead of answering. The question is now the task, and the answer contract is short and explicit. The agent's own boundaries are unchanged. Tested.
+
+**Verified without a model.** Invalid and empty replies are rejected. A down local model produces no output, even with the mock flag on. A hosted-provider key never reaches the local endpoint. The live-test wrapper fails if anything other than a validated output or a recorded contract refusal occurs.
+
+**Open decisions and blockers.**
+- The 0.5B model cannot meet the research contract. A larger model (for example `qwen2.5:1.5b`, about 1 GB) needs owner approval before download. It is not downloaded.
+- Answer quality is not checked by the gate. A delivered answer can be wrong, as the stage answer shows.
+- The live tests are opt-in (`LOCAL_AI_LIVE=1 npm run test:local-model`). They are skipped in `npm run verify`.
+- Local AI remains off by default. It is enabled only by setting `AI_LOCAL_ENABLED=true`.
 
 ## Session 10 additions (CEO readiness audit)
 

@@ -5,6 +5,11 @@ export interface LLMRequest {
   user: string;
   maxOutputTokens: number;
   timeoutMs: number;
+  /**
+   * Agent requests set this: the reply must be one JSON object. OpenAI-compatible endpoints get
+   * response_format json_object, which small local models need to keep to the contract.
+   */
+  jsonMode?: boolean;
   /** Consumed only by the mock provider. Never sent to a real model. */
   mockOutput?: unknown;
 }

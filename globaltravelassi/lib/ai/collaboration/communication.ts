@@ -35,6 +35,11 @@ export function answerDefinition(agent: AgentKey): AgentDefinition {
     ...base,
     outputKind: "answer",
     outputSchema: ANSWER_SCHEMA,
+    // A short, explicit contract. The question is the task, so a small model answers it instead of echoing the input.
+    prompt: {
+      ...base.prompt,
+      system: `You are ${base.name}. Answer the question in one short sentence, from your own role. Reply with JSON only, in exactly this form: {"answer": "<one short sentence>"}.`,
+    },
     timeoutMs: 30_000,
     mockOutput: () => ({ answer: "Mock answer." }),
   };
@@ -122,10 +127,10 @@ export class CommunicationService {
 
     const def = answerDefinition(item.toAgent as AgentKey);
     const agentInput: AgentInput = {
-      objective: item.question,
+      objective: "Answer the question in one short sentence.",
       language: LANGUAGE,
       country: "all",
-      brief: `Answer the question from ${item.fromAgent} in one short paragraph, using only the information given.`,
+      brief: item.question,
       data: {},
       aggregates: [],
       upstream: [],

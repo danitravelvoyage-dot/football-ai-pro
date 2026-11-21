@@ -157,3 +157,16 @@ describe("invalid replies and failures never produce an output", () => {
     expect(seen[0]?.auth).toBeUndefined();
   });
 });
+
+describe("JSON mode for agent requests", () => {
+  it("an agent request asks the endpoint for one JSON object, and a plain request does not", async () => {
+    seen.length = 0;
+    next = { status: 200, body: { choices: [{ message: { content: findingsJson } }] } };
+    const { gateway } = gatewayFor({});
+    await new AgentRuntime(gateway).run(getAgent("MarketResearchAgent"), input());
+    await gateway.complete({ system: "s", user: "u", maxOutputTokens: 10, timeoutMs: 5000 });
+    const body = seen as unknown as { body: Record<string, unknown> }[];
+    expect((body[0]?.body as { response_format?: unknown }).response_format).toEqual({ type: "json_object" });
+    expect((body[1]?.body as { response_format?: unknown }).response_format).toBeUndefined();
+  });
+});

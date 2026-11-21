@@ -81,6 +81,7 @@ export class AgentRuntime {
       user,
       maxOutputTokens: 1200,
       timeoutMs: def.timeoutMs,
+      jsonMode: true,
       mockOutput: def.mockOutput(input),
     });
 

@@ -132,7 +132,8 @@ describe("answers", () => {
 
   it("produces the answer with the answering agent's own prompt and boundaries", () => {
     const def = answerDefinition("CRMAgent");
-    expect(def.prompt.system).toBe(getAgent("CRMAgent").prompt.system);
+    // The short answer contract replaces the report prompt; the agent's own boundaries are kept unchanged.
+    expect(def.prompt.system).toContain('{"answer"');
     expect(def.boundaries).toEqual(getAgent("CRMAgent").boundaries);
     expect(def.outputKind).toBe("answer");
   });
