@@ -69,6 +69,13 @@ export async function addNoteAction(formData: FormData): Promise<ActionState> {
   return { ok: true, code: "note_saved" };
 }
 
+/** Maps a payment-function refusal to the code the owner's screen shows. The database message is not shown. */
+function manualPaymentFailure(message: string): ActionState {
+  if (/cannot be deleted|changes only through|protected/i.test(message)) return { ok: false, code: "protected_records" };
+  if (/not found/i.test(message)) return { ok: false, code: "not_found" };
+  return { ok: false, code: "generic" };
+}
+
 export async function recordPaymentAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
@@ -76,25 +83,18 @@ export async function recordPaymentAction(formData: FormData): Promise<ActionSta
   if (!parsed.ok) return parsed.state;
   const input = parsed.data;
 
-  const receivedAt =
-    input.status === "received" ? (input.receivedOn ? new Date(`${input.receivedOn}T12:00:00Z`).toISOString() : new Date().toISOString()) : null;
-
-  const { data, error } = await admin.supabase
-    .from("payments")
-    .insert({
-      application_id: input.applicationId,
-      amount: input.amount,
-      currency: input.currency,
-      method: input.method,
-      status: input.status,
-      reference: input.reference,
-      note: input.note,
-      received_at: receivedAt,
-      created_by: admin.userId,
-    })
-    .select("id")
-    .single();
-  if (error || !data) return { ok: false, code: "generic" };
+  // Owner-recorded payments are written by record_manual_payment(); the database checks the owner again.
+  const { data, error } = await admin.supabase.rpc("record_manual_payment", {
+    p_application: input.applicationId,
+    p_amount: input.amount,
+    p_currency: input.currency,
+    p_method: input.method,
+    p_status: input.status,
+    p_reference: input.reference,
+    p_note: input.note,
+    p_received_on: input.receivedOn || null,
+  });
+  if (error || !data) return manualPaymentFailure(error?.message ?? "");
 
   if (input.status === "received") {
     await admin.supabase.from("application_events").insert({
@@ -105,7 +105,7 @@ export async function recordPaymentAction(formData: FormData): Promise<ActionSta
     });
   }
   refresh();
-  return { ok: true, code: "payment_saved", id: data.id };
+  return { ok: true, code: "payment_saved", id: String(data) };
 }
 
 export async function setPaymentStatusAction(formData: FormData): Promise<ActionState> {
@@ -115,13 +115,9 @@ export async function setPaymentStatusAction(formData: FormData): Promise<Action
   const status = String(formData.get("status") ?? "");
   if (!UUID.test(paymentId) || !["pending", "received", "cancelled"].includes(status)) return { ok: false, code: "invalid_input" };
 
-  const patch: Record<string, string | null> = { status };
-  if (status === "received") patch.received_at = new Date().toISOString();
-  if (status !== "received") patch.received_at = null;
-
-  const { data, error } = await admin.supabase.from("payments").update(patch).eq("id", paymentId).select("id");
-  if (error) return { ok: false, code: "generic" };
-  if (!data?.length) return { ok: false, code: "not_found" };
+  // A payment with a proof is refused here by the database: it changes only through its decision.
+  const { error } = await admin.supabase.rpc("set_manual_payment_status", { p_payment: paymentId, p_status: status });
+  if (error) return manualPaymentFailure(error.message);
   refresh();
   return { ok: true, code: "saved" };
 }
@@ -139,6 +135,11 @@ export async function setDocumentVerifiedAction(formData: FormData): Promise<Act
   return { ok: true, code: "saved" };
 }
 
+/**
+ * Owner only. Deletes a request. The database checks first, in one transaction: if any protected record exists (a proof,
+ * a decided or audited payment, a removal), it refuses and nothing is deleted. Only then are the document files removed
+ * from storage. If storage cannot remove them, the owner is told how many files may remain.
+ */
 export async function deleteApplicationAction(formData: FormData): Promise<ActionState> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "unauthorized" };
@@ -146,16 +147,21 @@ export async function deleteApplicationAction(formData: FormData): Promise<Actio
   const locale = String(formData.get("locale") ?? "ar");
   if (!UUID.test(applicationId)) return { ok: false, code: "not_found" };
 
-  // Remove stored files first; the rows cascade when the request is deleted.
-  const { data: docs } = await admin.supabase.from("documents").select("storage_path").eq("application_id", applicationId);
-  const paths = (docs ?? []).map((d) => d.storage_path as string);
-  if (paths.length) await admin.supabase.storage.from(siteConfig.documentBucket).remove(paths);
+  const { data, error } = await admin.supabase.rpc("delete_application_request", { p_application: applicationId });
+  if (error) {
+    if (/protected payments or records/i.test(error.message)) return { ok: false, code: "protected_records" };
+    if (/Request not found/i.test(error.message)) return { ok: false, code: "not_found" };
+    return { ok: false, code: "generic" };
+  }
 
-  // Payments reference the request with RESTRICT, so they are removed explicitly.
-  await admin.supabase.from("payments").delete().eq("application_id", applicationId);
-  const { data, error } = await admin.supabase.from("applications").delete().eq("id", applicationId).select("id");
-  if (error) return { ok: false, code: "generic" };
-  if (!data?.length) return { ok: false, code: "not_found" };
+  const paths = ((data ?? []) as string[]).filter(Boolean);
+  if (paths.length) {
+    const { error: removeError } = await admin.supabase.storage.from(siteConfig.documentBucket).remove(paths);
+    if (removeError) {
+      refresh();
+      return { ok: false, code: "files_remaining", reference: String(paths.length) };
+    }
+  }
   refresh();
   redirect(`/${locale}/admin/applications?deleted=1`);
 }

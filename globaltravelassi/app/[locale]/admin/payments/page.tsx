@@ -4,7 +4,7 @@ import { getDictionary, isLocale, type Locale } from "@/lib/i18n";
 import { formMessages } from "@/lib/validation/messages";
 import { selfServicePaymentMethods } from "@/lib/domain";
 import { loadOrphanProofs, loadPaymentMethodHistory, loadPaymentMethodSettings } from "@/lib/payments/load";
-import { purgeOrphanProofsAction, saveMethodSettingsAction } from "@/lib/actions/payments";
+import { purgeOrphanProofsAction, reconcileOrphanRemovalsAction, saveMethodSettingsAction } from "@/lib/actions/payments";
 import { formatDateTime } from "@/lib/i18n";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { TextAreaField, TextField } from "@/components/forms/Fields";
@@ -31,7 +31,7 @@ export default async function AdminPaymentsPage({ params }: { params: Promise<{ 
   const settings = await loadPaymentMethodSettings();
   const byMethod = new Map(settings.map((s) => [s.method, s]));
   const [history, orphans] = await Promise.all([loadPaymentMethodHistory(), loadOrphanProofs()]);
-  const purgeMessages = { ...formMessages(dict), saved: mp.saved, purged: mp.purged, forbidden: mp.forbidden, invalid_input: mp.invalid, unauthorized: mp.unauthorized, generic: mp.generic };
+  const purgeMessages = { ...formMessages(dict), saved: mp.saved, purged: mp.purged, purged_partial: mp.purgedPartial, reconciled: mp.reconciled, forbidden: mp.forbidden, invalid_input: mp.invalid, unauthorized: mp.unauthorized, generic: mp.generic };
 
   return (
     <>
@@ -85,6 +85,10 @@ export default async function AdminPaymentsPage({ params }: { params: Promise<{ 
             <TextField name="reason" label={mp.reasonLabel} required maxLength={500} />
           </ActionForm>
         )}
+        <p className="mb-3 mt-6 text-sm leading-relaxed text-navy-600">{mp.reconcileNote}</p>
+        <ActionForm action={reconcileOrphanRemovalsAction} messages={purgeMessages} submitLabel={mp.reconcileSubmit} pendingLabel={dict.common.loading} submitVariant="navy" className="grid gap-4">
+          <input type="hidden" name="scope" value="open-removals" />
+        </ActionForm>
       </Panel>
     </>
   );

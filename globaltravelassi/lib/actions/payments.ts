@@ -156,9 +156,11 @@ export async function saveMethodSettingsAction(formData: FormData): Promise<Acti
 const purgeSchema = z.object({ reason: z.string().trim().min(REASON_MIN).max(REASON_MAX) });
 
 /**
- * Owner only. Removes proofs that were uploaded and never submitted, and are older than the retention (at least seven
- * days). Each file is checked again just before its removal, removed through the storage API, and then recorded in the
- * audit. A proof a payment refers to is never listed, so it is never removed. Runs only when the owner asks for it.
+ * Owner only. Removes proofs that were uploaded and never submitted, and are older than seven days. For each file:
+ * 1. the database records the intent, under the same lock a submission uses, after confirming the file is eligible;
+ * 2. the file is removed through the storage API;
+ * 3. the database records the result, and "removed" is written only when the file is confirmed gone.
+ * A failed removal is recorded as failed and counted as failed. Nothing is reported as removed without confirmation.
  */
 export async function purgeOrphanProofsAction(formData: FormData): Promise<ActionState> {
   const admin = await adminSession();
@@ -171,15 +173,37 @@ export async function purgeOrphanProofsAction(formData: FormData): Promise<Actio
   if (listError) return paymentFailure(listError.message);
 
   let removed = 0;
+  let failed = 0;
   for (const row of (candidates ?? []) as { object_name: string }[]) {
-    const { data: stillEligible, error: checkError } = await admin.supabase.rpc("orphan_proof_still_eligible", { p_name: row.object_name, p_retention: "7 days" });
-    if (checkError || !stillEligible) continue;
+    const { data: intentId, error: beginError } = await admin.supabase.rpc("begin_orphan_removal", {
+      p_name: row.object_name,
+      p_reason: why,
+      p_retention: "7 days",
+    });
+    if (beginError || !intentId) continue; // no longer eligible, or already being removed: skipped, not counted
+
     const { error: removeError } = await admin.supabase.storage.from(siteConfig.documentBucket).remove([row.object_name]);
-    if (removeError) continue;
-    const { error: recordError } = await admin.supabase.rpc("record_orphan_purge", { p_name: row.object_name, p_reason: why, p_retention: "7 days" });
-    if (recordError) return { ok: false, code: "generic", id: String(removed) };
-    removed += 1;
+    const { data: outcome, error: finishError } = await admin.supabase.rpc("finish_orphan_removal", {
+      p_removal: intentId,
+      p_removed: !removeError,
+      p_detail: removeError ? removeError.message.slice(0, 200) : null,
+    });
+    if (finishError || outcome !== "removed") {
+      failed += 1;
+    } else {
+      removed += 1;
+    }
   }
   refresh();
-  return { ok: true, code: "purged", id: String(removed) };
+  return { ok: true, code: failed > 0 ? "purged_partial" : "purged", id: String(removed), reference: String(failed) };
+}
+
+/** Owner only. Resolves removals left open by an interrupted run: confirmed gone is recorded as removed, else as failed. */
+export async function reconcileOrphanRemovalsAction(): Promise<ActionState> {
+  const admin = await adminSession();
+  if (!admin) return { ok: false, code: "unauthorized" };
+  const { data, error } = await admin.supabase.rpc("reconcile_orphan_removals", { p_older_than: "1 hour" });
+  if (error) return paymentFailure(error.message);
+  refresh();
+  return { ok: true, code: "reconciled", id: String((data ?? []).length) };
 }

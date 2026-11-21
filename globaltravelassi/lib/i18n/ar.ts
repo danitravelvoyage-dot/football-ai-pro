@@ -144,6 +144,12 @@ export const ar: Dict = {
   paymentMethods: { cash: "نقدًا", bank_transfer: "تحويل بنكي", ccp: "CCP", baridimob: "بريدي موب", other: "أخرى", usdt: "USDT", redotpay: "RedotPay" },
   paymentStatuses: { pending: "قيد الانتظار", received: "مُستلَم", cancelled: "ملغى", pending_review: "إثبات بانتظار المراجعة", rejected: "مرفوض" },
   manualPayments: {
+    protectedRecords: "هذا الطلب يحتوي على دفعات أو سجلات محمية، فلم يُحذف. لم يتغير شيء.",
+    filesRemaining: "تعذّر حذف بعض الملفات المخزّنة. تم حذف الطلب؛ تحقق من التخزين واحذف الملفات المتبقية.",
+    purgedPartial: "تم حذف بعض الإثباتات غير المرسلة، ولم يمكن تأكيد حذف بعضها الآخر. راجع السجل.",
+    reconciled: "تمت مطابقة عمليات الحذف المفتوحة.",
+    reconcileNote: "استخدم هذا بعد حذف متوقف: الملف المؤكد غيابه يُسجل محذوفا، والملف الذي ما زال موجودا يُسجل فاشلا.",
+    reconcileSubmit: "مطابقة عمليات الحذف المفتوحة",
     rejectionNote: "رسالة من الفريق",
     customerMessageLabel: "رسالة إلى العميل (مطلوبة عند الرفض)",
     customerMessageHint: "هذه الرسالة الوحيدة التي يقرأها العميل عن إثبات مرفوض. لا تضع فيها ملاحظات داخلية.",

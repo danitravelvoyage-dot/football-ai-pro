@@ -27,7 +27,7 @@ export default async function AdminApplicationPage({ params }: { params: Promise
   const locale = raw as Locale;
   const dict = getDictionary(locale);
   const t = dict.admin.detail;
-  const messages = formMessages(dict);
+  const messages = { ...formMessages(dict), protected_records: dict.manualPayments.protectedRecords, files_remaining: dict.manualPayments.filesRemaining };
   const { application: app, documents, payments, notes, events } = await getAdminApplicationDetail(id);
   const mp = dict.manualPayments;
   const proofLinks = await loadProofLinks(payments.flatMap((p) => (p.evidence_path ? [p.evidence_path] : [])));

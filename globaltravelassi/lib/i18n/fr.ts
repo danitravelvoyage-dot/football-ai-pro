@@ -144,6 +144,12 @@ export const fr: Dict = {
   paymentMethods: { cash: "Espèces", bank_transfer: "Virement bancaire", ccp: "CCP", baridimob: "BaridiMob", other: "Autre", usdt: "USDT", redotpay: "RedotPay" },
   paymentStatuses: { pending: "En attente", received: "Reçu", cancelled: "Annulé", pending_review: "Preuve en attente de vérification", rejected: "Refusé" },
   manualPayments: {
+    protectedRecords: "Cette demande a des paiements ou des enregistrements protégés : elle n’a pas été supprimée. Rien n’a été modifié.",
+    filesRemaining: "Certains fichiers stockés n’ont pas pu être retirés. La demande est supprimée ; vérifiez le stockage et retirez les fichiers restants.",
+    purgedPartial: "Certaines preuves non soumises ont été retirées, et d’autres n’ont pas pu être confirmées comme retirées. Consultez l’audit.",
+    reconciled: "Les retraits en cours ont été réconciliés.",
+    reconcileNote: "À utiliser après un retrait interrompu : un fichier confirmé absent est enregistré comme retiré, un fichier encore présent comme échoué.",
+    reconcileSubmit: "Réconcilier les retraits en cours",
     rejectionNote: "Message de l’équipe",
     customerMessageLabel: "Message au client (requis en cas de rejet)",
     customerMessageHint: "C’est le seul message que le client lit sur une preuve rejetée. N’y mettez aucune note interne.",

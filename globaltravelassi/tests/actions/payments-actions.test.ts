@@ -14,6 +14,9 @@ const state = vi.hoisted(() => ({
   orphans: [] as string[],
   eligibleNow: new Set<string>(),
   storageRemoved: [] as string[],
+  removeFails: false,
+  intents: [] as string[],
+  finished: [] as { id: string; removed: boolean }[],
 }));
 
 vi.mock("server-only", () => ({}));
@@ -22,12 +25,21 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const fakeClient = () => ({
   auth: { getUser: async () => ({ data: { user: state.user ? { id: state.user } : null } }) },
   from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.adminUser ? { role: "admin", is_active: true } : null }) }) }) }),
-  storage: { from: () => ({ remove: async (names: string[]) => { state.storageRemoved.push(...names); return { error: null }; } }) },
+  storage: { from: () => ({ remove: async (names: string[]) => { state.storageRemoved.push(...names); return { error: state.removeFails ? { message: "storage unavailable" } : null }; } }) },
   rpc: async (fn: string, args: Record<string, unknown>) => {
     state.rpcCalls.push({ fn, args });
     if (fn === "orphan_payment_proofs") return { data: state.orphans.map((object_name) => ({ object_name })), error: null };
     if (fn === "orphan_proof_still_eligible") return { data: state.eligibleNow.has(String(args.p_name)), error: null };
-    if (fn === "record_orphan_purge") return { data: null, error: null };
+    if (fn === "begin_orphan_removal") {
+      const name = String(args.p_name);
+      if (!state.eligibleNow.has(name)) return { data: null, error: { message: "This proof is not eligible for removal." } };
+      state.intents.push(name);
+      return { data: `intent-${state.intents.length}`, error: null };
+    }
+    if (fn === "finish_orphan_removal") {
+      state.finished.push({ id: String(args.p_removal), removed: Boolean(args.p_removed) });
+      return { data: args.p_removed ? "removed" : "failed", error: null };
+    }
     return state.rpcResult;
   },
 });
@@ -62,6 +74,9 @@ beforeEach(() => {
   state.orphans = [];
   state.eligibleNow = new Set();
   state.storageRemoved = [];
+  state.removeFails = false;
+  state.intents = [];
+  state.finished = [];
 });
 
 describe("customer submits a proof", () => {
@@ -201,22 +216,33 @@ describe("owner removes unsubmitted proofs", () => {
     expect(state.rpcCalls).toHaveLength(0);
   });
 
-  it("removes only the proofs that are still eligible, and records each removal", async () => {
+  it("removes only the proofs that are still eligible, and records each intent and its confirmed result", async () => {
     state.adminUser = USER;
     state.orphans = [OLD, NEW];
     state.eligibleNow = new Set([OLD]);
     const out = await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }));
-    expect(out).toEqual({ ok: true, code: "purged", id: "1" });
+    expect(out).toEqual({ ok: true, code: "purged", id: "1", reference: "0" });
     expect(state.storageRemoved).toEqual([OLD]);
-    expect(state.rpcCalls.filter((c) => c.fn === "record_orphan_purge").map((c) => c.args.p_name)).toEqual([OLD]);
-    expect(state.rpcCalls.find((c) => c.fn === "record_orphan_purge")?.args).toMatchObject({ p_reason: "Unsubmitted for over a week" });
+    expect(state.intents).toEqual([OLD]);
+    expect(state.finished).toEqual([{ id: "intent-1", removed: true }]);
   });
 
-  it("a proof that stops being eligible before its removal is kept, and no removal is recorded for it", async () => {
+  it("a proof that is no longer eligible when its removal begins is skipped: no intent, no removal", async () => {
     state.adminUser = USER;
     state.orphans = [OLD];
     state.eligibleNow = new Set();
-    expect(await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }))).toEqual({ ok: true, code: "purged", id: "0" });
+    expect(await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }))).toEqual({ ok: true, code: "purged", id: "0", reference: "0" });
     expect(state.storageRemoved).toEqual([]);
+    expect(state.intents).toEqual([]);
+  });
+
+  it("a failed storage removal is recorded as failed, never as removed, and the owner sees it counted", async () => {
+    state.adminUser = USER;
+    state.orphans = [OLD];
+    state.eligibleNow = new Set([OLD]);
+    state.removeFails = true;
+    const out = await purgeOrphanProofsAction(form({ reason: "Unsubmitted for over a week" }));
+    expect(out).toEqual({ ok: true, code: "purged_partial", id: "0", reference: "1" });
+    expect(state.finished).toEqual([{ id: "intent-1", removed: false }]);
   });
 });

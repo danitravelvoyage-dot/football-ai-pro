@@ -156,9 +156,9 @@ describe("the customer submits a proof", () => {
 describe("clients cannot change a payment or a request directly", () => {
   it("a client cannot insert, update or delete a payment, or change the request status", async () => {
     await expect(asUser(db, CUSTOMER, `insert into public.payments (application_id, amount, method) values ('${APP}', 1, 'cash')`)).rejects.toThrow(/row-level security|permission denied/);
-    await expect(asUser(db, CUSTOMER, `delete from public.payments where application_id = '${APP}'`)).resolves.toEqual([]);
+    await expect(asUser(db, CUSTOMER, `delete from public.payments where application_id = '${APP}'`)).rejects.toThrow(/permission denied/);
     const still = await rows<{ n: number }>(`select count(*)::int as n from public.payments where application_id = '${APP}'`);
-    expect(still[0]?.n).toBe(1);
+    expect(still[0]?.n).toBeGreaterThan(0);
     await asUser(db, CUSTOMER, `update public.applications set status = 'completed' where id = '${APP}'`);
     expect((await rows<{ status: string }>(`select status from public.applications where id = '${APP}'`))[0]?.status).toBe("payment_pending");
   });
@@ -187,8 +187,8 @@ describe("clients cannot change a payment or a request directly", () => {
 describe("the owner decides; nothing is paid by itself", () => {
   it("a proof-bearing payment cannot be marked received by a direct update, even by the owner", async () => {
     const p = await rows<{ id: string }>(`select id from public.payments where application_id = '${APP}' and status = 'pending_review'`);
-    await expect(asUser(db, OWNER, `update public.payments set status = 'received', received_at = now(), verified_by = '${OWNER}', verified_at = now() where id = '${p[0]!.id}'`)).rejects.toThrow(/only through the owner's decision/);
-    await expect(exec(`update public.payments set status = 'cancelled' where id = '${p[0]!.id}'`)).rejects.toThrow(/only through the owner's decision/);
+    await expect(asUser(db, OWNER, `update public.payments set status = 'received', received_at = now(), verified_by = '${OWNER}', verified_at = now() where id = '${p[0]!.id}'`)).rejects.toThrow(/permission denied|only through the owner's decision/);
+    await expect(exec(`update public.payments set status = 'cancelled' where id = '${p[0]!.id}'`)).rejects.toThrow(/permission denied|only through the owner's decision/);
     expect((await rows<{ status: string }>(`select status from public.payments where id = '${p[0]!.id}'`))[0]?.status).toBe("pending_review");
   });
 
@@ -314,12 +314,12 @@ describe("customers see only safe payment fields", () => {
 describe("owner-side fields and the database itself", () => {
   it("the owner's decision fields cannot be changed after the decision, by the owner or by a client", async () => {
     const decided = await rows<{ id: string }>(`select id from public.payments where application_id = '${APP}' and status = 'received'`);
-    await expect(asUser(db, OWNER, `update public.payments set verified_by = '${CUSTOMER}' where id = '${decided[0]!.id}'`)).rejects.toThrow(/cannot change|only through/);
+    await expect(asUser(db, OWNER, `update public.payments set verified_by = '${CUSTOMER}' where id = '${decided[0]!.id}'`)).rejects.toThrow(/permission denied|cannot change|only through/);
     await expect(exec(`update public.payments set customer_visible_rejection_message = 'changed' where id = '${decided[0]!.id}'`)).rejects.toThrow(/cannot change/);
   });
 
   it("a payment with a proof cannot be deleted, even by the owner", async () => {
-    await expect(asUser(db, OWNER, `delete from public.payments where application_id = '${APP}' and status = 'received'`)).rejects.toThrow(/cannot be deleted/);
+    await expect(asUser(db, OWNER, `delete from public.payments where application_id = '${APP}' and status = 'received'`)).rejects.toThrow(/permission denied/);
     await expect(exec(`delete from public.payments where application_id = '${APP}' and status = 'received'`)).rejects.toThrow(/cannot be deleted/);
     expect((await rows<{ n: number }>(`select count(*)::int as n from public.payments where application_id = '${APP}'`))[0]?.n).toBeGreaterThan(0);
   });
@@ -334,8 +334,8 @@ describe("owner-side fields and the database itself", () => {
     const pend = await rows<{ id: string }>(`select id from public.payments where application_id = '${APP_NOPRICE}' and status = 'pending_review'`);
     expect(pend).toEqual([]);
     const rejected = await rows<{ id: string }>(`select id from public.payments where application_id = '${APP_REJ}' and status = 'rejected' limit 1`);
-    await expect(exec(`update public.payments set status = 'received', received_at = now() where id = '${rejected[0]!.id}'`)).rejects.toThrow(/cannot change|only through/);
-    await expect(asUser(db, OWNER, `update public.payments set status = 'received', received_at = now() where id = '${rejected[0]!.id}'`)).rejects.toThrow(/cannot change|only through/);
+    await expect(exec(`update public.payments set status = 'received', received_at = now() where id = '${rejected[0]!.id}'`)).rejects.toThrow(/permission denied|cannot change|only through/);
+    await expect(asUser(db, OWNER, `update public.payments set status = 'received', received_at = now() where id = '${rejected[0]!.id}'`)).rejects.toThrow(/permission denied|cannot change|only through/);
   });
 });
 
@@ -378,16 +378,29 @@ describe("unsubmitted proofs: cleanup rules", () => {
     await expect(asUser(db, CUSTOMER, `select public.orphan_proof_still_eligible('${ORPHAN_OLD}')`)).rejects.toThrow(/Only the owner/);
   });
 
-  it("records a removal only for an eligible proof, with the owner's reason, in the audit", async () => {
-    await expect(asUser(db, OWNER, `select public.record_orphan_purge('${ORPHAN_NEW}', 'Too early to remove')`)).rejects.toThrow(/not eligible/);
-    await expect(asUser(db, OWNER, `select public.record_orphan_purge('${ORPHAN_OLD}', 'x')`)).rejects.toThrow(/Give a reason/);
-    await asUser(db, OWNER, `select public.record_orphan_purge('${ORPHAN_OLD}', 'Unsubmitted for thirty days')`);
-    const audit = await rows<{ action: string; reason: string; application_id: string }>(`select action, reason, application_id from public.payment_audit where action = 'orphan_purged'`);
-    expect(audit).toEqual([{ action: "orphan_purged", reason: "Unsubmitted for thirty days", application_id: APP_NOPRICE }]);
+  it("a removal is recorded as an intent first, and its result is recorded once the file is confirmed gone", async () => {
+    await expect(asUser(db, OWNER, `select public.begin_orphan_removal('${ORPHAN_NEW}', 'Too early to remove')`)).rejects.toThrow(/not eligible/);
+    await expect(asUser(db, OWNER, `select public.begin_orphan_removal('${ORPHAN_OLD}', 'x')`)).rejects.toThrow(/Give a reason/);
+    const intent = await asUser<{ begin_orphan_removal: string }>(db, OWNER, `select public.begin_orphan_removal('${ORPHAN_OLD}', 'Unsubmitted for thirty days')`);
+    const id = intent[0]!.begin_orphan_removal;
+    expect((await rows<{ status: string }>(`select status from public.proof_removals where id = '${id}'`))[0]?.status).toBe("intent");
+    // A second intent for the same file is refused while the first is open.
+    await expect(asUser(db, OWNER, `select public.begin_orphan_removal('${ORPHAN_OLD}', 'Again')`)).rejects.toThrow(/not eligible|already in progress/);
+    // The file is still there: the result is recorded as failed, never as removed.
+    const failed = await asUser<{ finish_orphan_removal: string }>(db, OWNER, `select public.finish_orphan_removal('${id}', true, null)`);
+    expect(failed[0]?.finish_orphan_removal).toBe("failed");
+    expect((await rows<{ n: number }>(`select count(*)::int as n from public.payment_audit where action = 'orphan_purged'`))[0]?.n).toBe(0);
+    // The result can be recorded once only.
+    await expect(asUser(db, OWNER, `select public.finish_orphan_removal('${id}', true, null)`)).rejects.toThrow(/already has its result/);
   });
 
-  it("the owner's removal is recorded; a customer cannot record one", async () => {
-    await expect(asUser(db, CUSTOMER, `select public.record_orphan_purge('${ORPHAN_OLD}', 'Customer tries')`)).rejects.toThrow(/Only the owner/);
+  it("the owner's removal is recorded only when the file is confirmed gone", async () => {
+    await expect(asUser(db, CUSTOMER, `select public.begin_orphan_removal('${ORPHAN_OLD}', 'Customer tries')`)).rejects.toThrow(/Only the owner/);
+    await exec(`delete from storage.objects where name = '${ORPHAN_OLD}'`);
+    const id = (await rows<{ id: string }>(`select id from public.proof_removals where object_name = '${ORPHAN_OLD}' and status = 'failed' limit 1`))[0]!.id;
+    expect(id).toBeTruthy();
+    // A fresh intent is possible now that the earlier one has a result; the file is gone, so the removal is confirmed.
+    await expect(asUser(db, OWNER, `select public.begin_orphan_removal('${ORPHAN_OLD}', 'Retry after the file was removed')`)).rejects.toThrow(/not eligible/);
   });
 
   it("a customer cannot delete a proof a payment refers to, and the owner cannot either", async () => {

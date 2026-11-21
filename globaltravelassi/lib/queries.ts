@@ -83,8 +83,8 @@ export async function getPaymentsFor(applicationId: string): Promise<PaymentRow[
 export async function getTimelineFor(applicationId: string): Promise<EventRow[]> {
   const supabase = await createServerSupabase();
   const { data } = await supabase
-    .from("application_events")
-    .select("*")
+    .from("customer_application_events")
+    .select("id, application_id, kind, to_status, message, created_at")
     .eq("application_id", applicationId)
     .order("created_at", { ascending: true });
   return (data ?? []) as EventRow[];

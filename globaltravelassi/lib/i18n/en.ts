@@ -142,6 +142,12 @@ export const en = {
   paymentMethods: { cash: "Cash", bank_transfer: "Bank transfer", ccp: "CCP", baridimob: "BaridiMob", other: "Other", usdt: "USDT", redotpay: "RedotPay" },
   paymentStatuses: { pending: "Pending", received: "Received", cancelled: "Cancelled", pending_review: "Proof waiting for review", rejected: "Rejected" },
   manualPayments: {
+    protectedRecords: "This request has protected payments or records, so it was not deleted. Nothing was changed.",
+    filesRemaining: "Some stored files could not be removed. The request is deleted; check the storage and remove the remaining files.",
+    purgedPartial: "Some unsubmitted proofs were removed, and some could not be confirmed as removed. Check the audit.",
+    reconciled: "Open removals were reconciled.",
+    reconcileNote: "Use this after an interrupted removal: a file confirmed gone is recorded as removed, a file still present is recorded as failed.",
+    reconcileSubmit: "Reconcile open removals",
     rejectionNote: "Message from the team",
     customerMessageLabel: "Message to the customer (required when rejecting)",
     customerMessageHint: "This is the only message the customer reads about a rejected proof. Do not put internal notes here.",
