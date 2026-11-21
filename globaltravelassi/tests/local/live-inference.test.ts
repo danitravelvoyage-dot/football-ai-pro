@@ -108,3 +108,24 @@ describe.skipIf(!LIVE)("real local model: one agent question, answered and revie
     if (outcome.status === "delivered") expect(exchange?.answer).toBeTruthy();
   }, 240_000);
 });
+
+
+describe.skipIf(!LIVE)("real local model: a lead's stage, checked against the stored record (opt-in)", () => {
+  it("the stage answer is the stored stage, whatever the model says", async () => {
+    const { makeHarness, OWNER } = await import("../ai/helpers");
+    const { StageAnswerService } = await import("@/lib/ai/factual/stage-answer");
+    const { CrmService } = await import("@/lib/ai/crm/service");
+    const { MemoryCrmStore } = await import("@/lib/ai/crm/memory-store");
+    const { MemoryAuditSink } = await import("@/lib/ai/audit");
+    const config = loadProviderConfig({ AI_LOCAL_ENABLED: "true", AI_LOCAL_BASE_URL: BASE, AI_LOCAL_MODEL: MODEL, AI_LOCAL_MAX_RETRIES: "0" }).find((p) => p.id === "local-ollama")!;
+    const provider = new OpenAICompatibleProvider({ id: config.id, baseUrl: config.baseUrl ?? "", model: config.model ?? "" });
+    const h = makeHarness({ providers: [{ config, provider }] });
+    const audit = new MemoryAuditSink();
+    const crm = new CrmService({ store: new MemoryCrmStore(), audit, now: h.clock.now, newId: h.ids });
+    const lead = await crm.createLead(OWNER, { label: "Family visa enquiry", source: "manual", applicationId: null, destinationCountry: "FR", nationality: "DZ", travelDate: null, interest: "visa" });
+    const answer = await new StageAnswerService({ runtime: h.runtime, crm, audit, now: h.clock.now, newId: h.ids }).answer(OWNER, lead.id, "Which stage should a new family visa enquiry start in?");
+    console.log("REAL LOCAL MODEL STAGE ANSWER", JSON.stringify({ model: MODEL, answer, auditMeta: audit.events.find((e) => e.type === "crm.stage_answered")?.meta }, null, 2));
+    expect(answer.stage).toBe("new");
+    expect(answer.source).toBe("crm_record");
+  }, 240_000);
+});

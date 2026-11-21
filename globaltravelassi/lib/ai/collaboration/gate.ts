@@ -2,6 +2,7 @@ import type { QualityStatus, QualityIssue } from "../quality/types";
 import { applyRevisionLimit } from "../quality/revision";
 import { DEFAULT_QUALITY_CONFIG } from "../quality/types";
 import { reachConsensus, type ConsensusPolicy, type ConsensusResult, type Vote } from "./consensus";
+import { VERIFIED, type FactualVerdict } from "../factual/validate";
 import { complianceVote, qualityVote } from "./panel";
 
 /**
@@ -35,7 +36,19 @@ export interface GateInput {
   controllerStatus: QualityStatus;
   controllerIssues: QualityIssue[];
   attempt: number;
+  /**
+   * Factual validation, checked against the owner's approved sources, the CRM and the owner's memory. It is not a
+   * vote: the final status is never less severe than this verdict, whatever the reviewers say.
+   */
+  factual?: FactualVerdict;
 }
+
+const FACTUAL_TO_STATUS: Record<FactualVerdict["status"], QualityStatus> = {
+  verified: "PASSED",
+  needs_evidence: "NEEDS_REVISION",
+  uncertain: "REQUIRES_HUMAN_REVIEW",
+  fabricated: "REJECTED",
+};
 
 export interface GateResult {
   status: QualityStatus;
@@ -62,11 +75,15 @@ export function decideGate(input: GateInput): GateResult {
   const panelStatus = FROM_DECISION[consensus.decision];
   // A disagreement is the owner's to decide. It is not settled by taking the controller's rejection.
   const disagreement = consensus.reasons.includes("reviewers_disagree");
-  const worst = disagreement
+  const votesStatus = disagreement
     ? "REQUIRES_HUMAN_REVIEW"
     : SEVERITY[panelStatus] >= SEVERITY[input.controllerStatus]
       ? panelStatus
       : input.controllerStatus;
+  // Factual validation has the last word: the more severe of the votes and the facts.
+  const factual = input.factual ?? VERIFIED;
+  const factualStatus = FACTUAL_TO_STATUS[factual.status];
+  const worst = SEVERITY[factualStatus] > SEVERITY[votesStatus] ? factualStatus : votesStatus;
   const status = applyRevisionLimit(worst, input.attempt, DEFAULT_QUALITY_CONFIG.maxAttempts);
   return { status, votes, consensus };
 }

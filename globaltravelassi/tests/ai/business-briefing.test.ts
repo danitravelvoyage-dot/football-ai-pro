@@ -143,18 +143,6 @@ describe("the briefing reaches agent execution", () => {
     const payloads: string[] = [];
     const mock = mockFor();
     let calls = 0;
-    // Turns the mock reply into an unsupported, high-confidence factual claim with no source: the quality gate asks for a
-    // revision. It is not a compliance violation, so the compliance lens approves it and the revision loop runs.
-    const unsupported = (text: string) => {
-      const replace = (v: unknown, key?: string): unknown => {
-        if (key === "confidence") return "high";
-        if (typeof v === "string") return v.length >= 8 ? "Demand rose sharply last year, sure thing!" : v;
-        if (Array.isArray(v)) return v.map((x) => replace(x));
-        if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, replace(x, k)]));
-        return v;
-      };
-      return JSON.stringify(replace(JSON.parse(text)));
-    };
     const h = makeHarness({
       start: T,
       providers: [
@@ -163,8 +151,12 @@ describe("the briefing reaches agent execution", () => {
           provider: new ScriptedProvider("mock", async (req) => {
             payloads.push(req.user);
             calls += 1;
-            const reply = (await mock.complete(req)).text;
-            return calls === 1 ? unsupported(reply) : reply;
+            // The placeholder has no findings, so the first reply carries one unsupported finding (no source). The
+            // factual check asks for evidence, and the retry gets the feedback.
+            const reply = calls === 1
+              ? JSON.stringify({ findings: [{ insight: "Demand rose sharply last year.", evidence: "Trust us.", confidence: "high", sources: [] }] })
+              : (await mock.complete(req)).text;
+            return reply;
           }),
         },
       ],

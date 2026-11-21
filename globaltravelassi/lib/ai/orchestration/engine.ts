@@ -19,6 +19,7 @@ import { taskFailedNotice, type Notice } from "../notifications/rules";
 import type { Claim } from "../quality/types";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
 import { decideGate, type GateResult } from "../collaboration/gate";
+import { VERIFIED, combineVerdicts, validateAgainstMemory, validateResearch, type FactualVerdict } from "../factual/validate";
 import { AGENT_CAPABILITIES, routeTask, routingCapabilityFor, type Capability } from "../collaboration/delegation";
 import type { CollaborationStore } from "../collaboration/store";
 import type { WorkflowTemplate } from "../workflows/templates";
@@ -416,6 +417,7 @@ export class Orchestrator {
     // Two independent reviewers vote: the controller and the compliance lens. The gate decides the final status
     // before the review is stored, so the stored history and the action taken always agree.
     let gate!: GateResult;
+    const factual = await this.factualVerdict(task, def.outputKind, output);
     const review = await this.deps.quality.reviewAndRecord(
       {
         taskId: task.id,
@@ -437,12 +439,16 @@ export class Orchestrator {
           controllerStatus: controllerReview.status,
           controllerIssues: controllerReview.issues,
           attempt: controllerReview.attempt,
+          factual,
         });
         return gate.status;
       },
     );
     const status = review.status;
-    const codes = [...new Set([...review.issues.filter((i) => i.severity !== "info").map((i) => i.code), ...gate.votes.flatMap((v) => v.codes)])].join(", ") || "none";
+    const codes = [...new Set([...review.issues.filter((i) => i.severity !== "info").map((i) => i.code), ...gate.votes.flatMap((v) => v.codes), ...factual.issues.map((i) => i.code)])].join(", ") || "none";
+    if (factual.status !== "verified") {
+      await this.audit(`agent:${task.agent}`, "review.factual", "task", task.id, { status: factual.status, codes: factual.issues.map((i) => i.code) });
+    }
     await this.recordPanel(task, review.attempt, gate);
     await this.recordConflicts(task, review.issues, peers);
 
@@ -780,6 +786,21 @@ export class Orchestrator {
         this.deps.logger.error("routing.not_recorded", { reason: error instanceof Error ? error.name : "unknown" });
       }
     }
+  }
+
+  /**
+   * Factual checks, separate from the reviewers. Research sources must be real and on the owner's approved list. Every
+   * claim with a value is compared with the owner's memory. Codes and locations only; nothing is fetched.
+   */
+  private async factualVerdict(task: TaskRecord, outputKind: string, output: unknown): Promise<FactualVerdict> {
+    const research =
+      outputKind === "research" && typeof output === "object" && output !== null && Array.isArray((output as { findings?: unknown }).findings)
+        ? validateResearch((output as { findings: { sources?: string[] }[] }).findings, this.deps.visaAllowlist())
+        : VERIFIED;
+    const claims = claimsOf(task.agent, outputKind, output).map((c) => ({ key: c.key, value: c.value, path: c.path }));
+    // The owner's memory is read only when there is a value to compare with it.
+    const memory = claims.some((c) => c.value !== undefined) ? ((await this.deps.briefing?.()) ?? []).map((item) => ({ key: item.key, value: item.value })) : [];
+    return combineVerdicts(research, validateAgainstMemory(claims, memory));
   }
 
   /** Records the consensus behind a gate decision: votes, exclusions, reasons. Codes only. */

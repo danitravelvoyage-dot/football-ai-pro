@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LEAD_STAGES } from "./crm/rules";
 import type { ToolName } from "./tools";
 import { AGENT_KEYS, type AgentInput, type AgentKey } from "./types";
 
@@ -45,7 +46,12 @@ export const outputSchemas = {
     follow_up_drafts: z.array(z.object({ ref_id: z.string().max(60), text: z.string().max(1000) })).max(50),
   }),
   support: z.object({ classification: z.string().max(60), urgent: z.boolean(), draft_reply: z.string().max(2000) }),
-  crm: z.object({ proposals: z.array(z.object({ ref_id: z.string().max(60), change: z.string().max(200), reason: z.string().max(300) })).max(100) }),
+  // A suggested stage must be one the CRM defines. Anything else is refused by the schema, before any review.
+  crm: z.object({
+    proposals: z
+      .array(z.object({ ref_id: z.string().max(60), change: z.string().max(200), reason: z.string().max(300), stage: z.enum(LEAD_STAGES).optional() }))
+      .max(100),
+  }),
   visa: z.object({ requirements: z.array(requirement).max(50) }),
   analytics: z.object({
     metrics: z.array(z.object({ name: z.string().max(80), value: z.number(), period: z.string().max(40) })).max(50),
@@ -139,7 +145,8 @@ export const AGENT_REGISTRY: Record<AgentKey, AgentDefinition> = {
     ["store.readAggregates", "store.saveArtifact", "store.saveMemory"],
     ["Never scrape pages behind a login.", "Only cite sources that were provided to you."],
     "Produce findings with an explicit confidence level and the sources you were given.",
-    () => ({ findings: [{ insight: "Mock finding.", evidence: "Mock evidence.", confidence: "low", sources: [] }] }),
+    // Placeholder: no findings. A finding without a source would be unsupported and is refused by factual validation.
+    () => ({ findings: [] }),
   ),
   MarketingStrategistAgent: def(
     "MarketingStrategistAgent",

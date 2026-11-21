@@ -79,3 +79,35 @@ describe("quality gate: loop prevention", () => {
     expect(g.status).not.toBe("NEEDS_REVISION");
   });
 });
+
+describe("factual validation has the last word, and votes cannot override it", () => {
+  const unanimous = { ...clean, controllerStatus: "PASSED" as const, controllerIssues: [] as QualityIssue[], attempt: 1 };
+
+  it("two approving reviewers do not make a fabricated fact pass: it is refused", () => {
+    const g = decideGate({ ...unanimous, factual: { status: "fabricated", issues: [{ code: "invalid_url", path: "findings[0].sources[0]", status: "fabricated" }] } });
+    expect(g.consensus.decision).toBe("approve");
+    expect(g.status).toBe("REJECTED");
+  });
+
+  it("an uncertain fact goes to the owner even when both reviewers approve", () => {
+    const g = decideGate({ ...unanimous, factual: { status: "uncertain", issues: [{ code: "unapproved_source", path: "p", status: "uncertain" }] } });
+    expect(g.status).toBe("REQUIRES_HUMAN_REVIEW");
+  });
+
+  it("a fact with no evidence asks for revision, and after the attempt limit it is refused", () => {
+    const first = decideGate({ ...unanimous, attempt: 1, factual: { status: "needs_evidence", issues: [{ code: "missing_evidence", path: "p", status: "needs_evidence" }] } });
+    expect(first.status).toBe("NEEDS_REVISION");
+    const last = decideGate({ ...unanimous, attempt: 99, factual: { status: "needs_evidence", issues: [{ code: "missing_evidence", path: "p", status: "needs_evidence" }] } });
+    expect(last.status).toBe("REJECTED");
+  });
+
+  it("a fabricated fact is refused even when the reviewers disagree and would escalate", () => {
+    const g = decideGate({ producer: "MarketResearchAgent", outputKind: "research", output: clean.output, controllerStatus: "REJECTED", controllerIssues: [{ code: "schema_failure", dimension: "schema_validity", severity: "blocking", path: "x" }], attempt: 1, factual: { status: "fabricated", issues: [{ code: "invalid_url", path: "p", status: "fabricated" }] } });
+    expect(g.status).toBe("REJECTED");
+  });
+
+  it("with verified facts, the gate behaves exactly as before", () => {
+    const g = decideGate({ ...unanimous, factual: { status: "verified", issues: [] } });
+    expect(g.status).toBe("PASSED");
+  });
+});

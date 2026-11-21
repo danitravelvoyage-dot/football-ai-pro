@@ -39,6 +39,7 @@ import { CompetitorService } from "./competitors/service";
 import { SupabaseCompetitorStore } from "./competitors/supabase-store";
 import type { HttpFetch } from "./competitors/fetch";
 import { BusinessReportService } from "./business/service";
+import { StageAnswerService } from "./factual/stage-answer";
 import { SupabaseCollaborationStore } from "./collaboration/supabase-store";
 import { CollaborationService } from "./collaboration/service";
 import { CommunicationService } from "./collaboration/communication";
@@ -79,6 +80,7 @@ export interface AiServices {
   businessReports: BusinessReportService;
   collaboration: CollaborationService;
   communication: CommunicationService;
+  stageAnswers: StageAnswerService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -186,9 +188,10 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const crm = new CrmService({ store: new SupabaseCrmStore(db), audit, now, newId });
   const competitors = new CompetitorService({ store: new SupabaseCompetitorStore(db), fetch: ((url, init) => fetch(url, init)) as HttpFetch, audit, now, newId });
   const collaboration = new CollaborationService({ store: collaborationStore, audit, now, newId });
-  const communication = new CommunicationService({ bus: platform.events, events: eventStore, runtime, quality: platform.quality, collaboration: collaborationStore, audit, now, newId });
+  const communication = new CommunicationService({ approvedHosts: () => visaHosts, bus: platform.events, events: eventStore, runtime, quality: platform.quality, collaboration: collaborationStore, audit, now, newId });
+  const stageAnswers = new StageAnswerService({ runtime, crm, audit, now, newId });
   const businessReports = new BusinessReportService({ crm, campaigns, competitors, notify: (n) => notifications.notify(n), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, stageAnswers, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

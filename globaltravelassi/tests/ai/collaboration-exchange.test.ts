@@ -1,12 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { makeHarness, OWNER, AGENT } from "./helpers";
+import { makeHarness, OWNER, AGENT, ScriptedProvider } from "./helpers";
+import { MockProvider } from "@/lib/ai/llm/mock-provider";
 import { CommunicationService, MAX_QUESTIONS_PER_RUN, answerDefinition } from "@/lib/ai/collaboration/communication";
 import { EventValidationError } from "@/lib/ai/events/bus";
 import { getAgent } from "@/lib/ai/registry";
 
+const APPROVED_HOSTS = ["official.example.dz"];
+const CITED = JSON.stringify({ answer: "The enquiry starts in the new stage.", sources: ["https://official.example.dz/crm/stages"] });
+
+/** A model that answers with an approved source. Every other request is served by the mock. */
+function citingProvider(reply: string = CITED) {
+  const mock = new MockProvider("scripted");
+  return new ScriptedProvider("scripted", async (req) => {
+    if (req.system.includes("Reply with JSON only, in exactly this form: {\"answer\"")) return reply;
+    return (await mock.complete(req)).text;
+  });
+}
+
 function setup(options: Parameters<typeof makeHarness>[0] = {}) {
   const h = makeHarness(options);
   const comm = new CommunicationService({
+    approvedHosts: () => APPROVED_HOSTS,
     bus: h.events,
     events: h.eventStore,
     runtime: h.runtime,
@@ -72,8 +86,9 @@ describe("question rules", () => {
 });
 
 describe("answers", () => {
-  it("delivers an answer that passes the two-reviewer gate, one hop back to the asker", async () => {
-    const { comm, h } = setup();
+  it("delivers an answer that passes the two-reviewer gate and cites an approved source, one hop back to the asker", async () => {
+    const cfg = { id: "scripted", kind: "mock" as const, costTier: "free" as const, enabled: true, ownerApproved: true, dailyRequestLimit: 1000 };
+    const { comm, h } = setup({ providers: [{ config: cfg, provider: citingProvider() }] });
     const { questionId } = await comm.ask(OWNER, q());
     const result = await comm.answer(OWNER, { runId: RUN, questionId });
     expect(result.status).toBe("delivered");
@@ -85,7 +100,8 @@ describe("answers", () => {
   });
 
   it("the asker stores the delivered answer as memory", async () => {
-    const { comm, h } = setup();
+    const cfg = { id: "scripted", kind: "mock" as const, costTier: "free" as const, enabled: true, ownerApproved: true, dailyRequestLimit: 1000 };
+    const { comm, h } = setup({ providers: [{ config: cfg, provider: citingProvider() }] });
     const saved: string[] = [];
     const original = h.store.saveMemory.bind(h.store);
     h.store.saveMemory = async (agent, key, summary, at) => {
@@ -108,11 +124,30 @@ describe("answers", () => {
     expect(h.audit.events.some((e) => e.type === "agent.answer_held")).toBe(true);
   });
 
-  it("answers each question once", async () => {
-    const { comm } = setup();
+  it("a delivered answer is never produced again for the same question", async () => {
+    const cfg = { id: "scripted", kind: "mock" as const, costTier: "free" as const, enabled: true, ownerApproved: true, dailyRequestLimit: 1000 };
+    const { comm } = setup({ providers: [{ config: cfg, provider: citingProvider() }] });
     const { questionId } = await comm.ask(OWNER, q());
     await comm.answer(OWNER, { runId: RUN, questionId });
     await expect(comm.answer(OWNER, { runId: RUN, questionId })).rejects.toMatchObject({ code: "already_answered" });
+  });
+
+  it("an answer with no approved source is held for the owner and not delivered", async () => {
+    const { comm, h } = setup();
+    const { questionId } = await comm.ask(OWNER, q());
+    const result = await comm.answer(OWNER, { runId: RUN, questionId });
+    expect(result.status).toBe("held");
+    const answers = (await h.eventStore.listEvents({ limit: 500 })).items.filter((e) => e.eventType === "agent.answer");
+    expect(answers).toHaveLength(0);
+    expect(h.audit.events.some((e) => e.type === "agent.answer_held")).toBe(true);
+  });
+
+  it("an answer that cites a fabricated address is refused, even though it is well formed text", async () => {
+    const cfg = { id: "scripted", kind: "mock" as const, costTier: "free" as const, enabled: true, ownerApproved: true, dailyRequestLimit: 1000 };
+    const bad = JSON.stringify({ answer: "Start in the new stage.", sources: ["https://official.example.dz:9/x"] });
+    const { comm } = setup({ providers: [{ config: cfg, provider: citingProvider(bad) }] });
+    const { questionId } = await comm.ask(OWNER, q());
+    expect((await comm.answer(OWNER, { runId: RUN, questionId })).status).toBe("held");
   });
 
   it("refuses to answer a question that does not exist in the run", async () => {
@@ -199,7 +234,8 @@ describe("loop prevention and the bus rules", () => {
 
 describe("exchanges are visible to the owner", () => {
   it("lists each question with its answer once delivered, and nothing for other runs", async () => {
-    const { comm } = setup();
+    const cfg = { id: "scripted", kind: "mock" as const, costTier: "free" as const, enabled: true, ownerApproved: true, dailyRequestLimit: 1000 };
+    const { comm } = setup({ providers: [{ config: cfg, provider: citingProvider() }] });
     const { questionId } = await comm.ask(OWNER, q());
     await comm.ask(OWNER, q({ runId: "other-run", question: "A different question about another run" }));
     await comm.answer(OWNER, { runId: RUN, questionId });

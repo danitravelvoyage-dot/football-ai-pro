@@ -8,6 +8,7 @@ import type { EventStore, DomainEventRecord } from "../events/store";
 import type { AgentRuntime } from "../runtime";
 import type { QualityController } from "../quality/controller";
 import { decideGate } from "./gate";
+import { validateAnswerSources } from "../factual/validate";
 import type { CollaborationStore } from "./store";
 import { assertNoPersonalData, PersonalDataError } from "../security/personal-data";
 
@@ -26,7 +27,14 @@ import { assertNoPersonalData, PersonalDataError } from "../security/personal-da
 export const MAX_QUESTIONS_PER_RUN = 5;
 const LANGUAGE = "en" as const;
 
-export const ANSWER_SCHEMA = z.object({ answer: z.string().trim().min(1).max(1000) });
+/**
+ * An answer and the sources it cites. Sources are checked by the factual layer, not here: a fabricated address must
+ * reach that check, so it is refused for the right reason.
+ */
+export const ANSWER_SCHEMA = z.object({
+  answer: z.string().trim().min(1).max(1000),
+  sources: z.array(z.string().max(500)).max(5).default([]),
+});
 
 /** The answering agent's own prompt and boundaries, with an answer contract in place of its report contract. Pure. */
 export function answerDefinition(agent: AgentKey): AgentDefinition {
@@ -38,7 +46,7 @@ export function answerDefinition(agent: AgentKey): AgentDefinition {
     // A short, explicit contract. The question is the task, so a small model answers it instead of echoing the input.
     prompt: {
       ...base.prompt,
-      system: `You are ${base.name}. Answer the question in one short sentence, from your own role. Reply with JSON only, in exactly this form: {"answer": "<one short sentence>"}.`,
+      system: `You are ${base.name}. Answer the question in one short sentence, from your own role. Reply with JSON only, in exactly this form: {"answer": "<one short sentence>", "sources": []}. Put only web addresses you were given in sources; leave it empty if you have none.`,
     },
     timeoutMs: 30_000,
     mockOutput: () => ({ answer: "Mock answer." }),
@@ -56,6 +64,8 @@ export class ExchangeError extends Error {
 }
 
 export interface ExchangeDeps {
+  /** Owner-approved source hosts. An answer is delivered automatically only when its sources are on this list. */
+  approvedHosts?: () => string[];
   bus: EventBus;
   events: EventStore;
   runtime: AgentRuntime;
@@ -156,6 +166,8 @@ export class CommunicationService {
       allowlist: [],
       attempt: 1,
     });
+    // A free-text answer is factual by nature. It is delivered automatically only when it cites approved sources.
+    const cited = (output as { sources?: string[] }).sources ?? [];
     const gate = decideGate({
       producer: item.toAgent,
       outputKind: "answer",
@@ -163,6 +175,7 @@ export class CommunicationService {
       controllerStatus: controllerReview.status,
       controllerIssues: controllerReview.issues,
       attempt: 1,
+      factual: validateAnswerSources(cited, this.deps.approvedHosts?.() ?? []),
     });
     await this.audit(actor, "agent.answer_reviewed", input.questionId, { status: gate.status, decision: gate.consensus.decision, reasons: gate.consensus.reasons });
     if (gate.status !== "PASSED") {

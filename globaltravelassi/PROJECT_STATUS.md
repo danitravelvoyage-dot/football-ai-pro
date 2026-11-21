@@ -1,15 +1,15 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21 (session 11). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+Status date: 2026-11-21 (session 12). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
 No migration has been applied to any database (0002 to 0017 are all unapplied). The whole chain was applied to a disposable PGlite database in session 10, and nothing else.
 
-## Verification (session 11, local AI activation)
+## Verification (session 12, AI quality and fact validation)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 67 files, 877 passing and 2 skipped (the opt-in live model tests), all passing (870 at session 10, 838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 71 files, 919 passing and 3 skipped (the opt-in live model tests), all passing (877 at session 11, 870 at session 10, 838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
 | Browser (`npm run test:browser`, Chromium, production build) | 22 of 22 checks pass: trigger refusals; public home in en, fr and ar with correct direction and no errors; all 28 admin pages redirect to sign-in in en, fr and ar (84 redirects); sign-in, register and forgot forms render in all three locales; no horizontal scroll at 375 px |
 | `npm run verify` | passes: lint, typecheck, unit and integration tests, production build (includes `/[locale]/admin/command-center/conflicts`) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
@@ -165,6 +165,41 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 12 additions (AI quality and fact validation)
+
+**Principle.** Factual validation is separate from the two reviewers. It checks sources against the owner's approved list, CRM stages against the CRM's own list and the stored record, and claims against the owner's memory. Its verdict is the last word: the gate's final status is never less severe than the facts, and no combination of votes overrides a fabricated or uncertain fact. It never fetches a URL, so nothing outside the platform is contacted.
+
+**Verified defects, found before changing anything.**
+- A research finding with a well-formed but unapproved URL passed as verified.
+- A finding with low confidence and no source was accepted as "uncertain" and stored.
+- The research placeholder stored a finding titled "Mock finding." with the evidence "Mock evidence." and no source.
+- The CRM agent's output had no stage field, so no suggested stage was validated against the CRM.
+- A free-text answer was delivered on the reviewers' approval alone, with no source.
+
+**Implemented.**
+1. **Factual validation** (`lib/ai/factual/validate.ts`, pure). Source checks: invalid or insecure URLs, credentials, non-default ports, private or internal hosts are fabricated and refused; a public https address the owner has not approved is uncertain and goes to the owner. Research findings need a source, and missing evidence asks for revision, then refuses. Stages must be one the CRM defines and must match the stored record. Claims with values are compared with the owner's memory. Free-text answers are delivered only when they cite approved sources.
+2. **Gate.** Factual verdicts are combined last, so they cannot be outvoted. Test: two approving reviewers do not make a fabricated fact pass.
+3. **Engine.** Research sources and memory contradictions are checked before the gate. Each non-verified outcome is audited with codes only.
+4. **CRM stages.** The CRM agent's proposal schema accepts only the CRM's own stages. The stage answer (`lib/ai/factual/stage-answer.ts`) is always the stored record. The model is a cross-check, given only the question and the allowed list. It is refused if it names an invented stage, and escalated if it names a different real stage.
+5. **Answers.** Free-text answers carry a `sources` list. Without approved sources they are held for the owner, not delivered. Fabricated sources are refused.
+6. **Research placeholder** is now an empty findings list, which claims nothing.
+
+**Reproduction of the defect.** A scripted model answering "Boundaries" for "Which stage should a new family visa enquiry start in?" is refused, and the answer is the stored stage "new". A test pins this.
+
+**Real local model (qwen2.5:0.5b).** The stage check agreed with the stored record, so the answer is "new" with status answered (live, one run). The live run did not produce an invented stage, so the refusal path is proven only by the scripted reproduction.
+
+**Tests.** Factual validation: 21 unit tests (fabricated URLs, unsupported claims, missing evidence, contradictory memory, valid sources, CRM stage cases, verdict combination). Gate: 5 new tests for the factual last word. Stage answers: 7 tests. Engine: 6 factual integration tests. Exchanges: updated to the source-backed contract, with new cases for held and fabricated answers.
+
+**Remaining risks and gaps.**
+- Source checks cover form and the owner's approved list, not content. A real approved page can still be wrong. The platform does not read pages.
+- The approved host list is empty by default, so research with sources will be escalated until the owner approves hosts.
+- Memory contradictions are checked only for claims with values (visa requirements). Research findings have no value, so memory cannot contradict them.
+- Free-text answers that are held, and stage disagreements that are escalated, are recorded in the audit log only. An owner screen for them is not built.
+- Factual validation cannot judge whether an answer is correct. The stage answer is correct because the record is used, not because the model is trusted.
+- The 0.5B model does not meet the research contract, so research findings are refused in practice. A larger model needs owner approval.
+- Cross-agent conflicts remain unreachable (see the pinned test).
+- Stage proposals in CRM output are validated for the stage name only. Whether a proposed move is allowed for a specific lead is not checked.
 
 ## Session 11 additions (local AI activation)
 
