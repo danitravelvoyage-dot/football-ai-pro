@@ -1,6 +1,6 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runSchedulerOnce } from "@/lib/ai/scheduler/worker";
+import { authorizeTrigger } from "@/lib/ai/scheduler/auth";
 
 /**
  * Trigger for the autonomous scheduler. An external scheduler (for example a cron service) calls this
@@ -14,28 +14,11 @@ import { runSchedulerOnce } from "@/lib/ai/scheduler/worker";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MIN_SECRET_LENGTH = 32;
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** Compares digests, so the comparison takes the same time whatever the presented value is. */
-function matches(presented: string, expected: string): boolean {
-  const a = createHash("sha256").update(presented).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
 export async function POST(request: Request) {
-  const expected = process.env.AI_SCHEDULER_SECRET ?? "";
-  // Without a configured secret of adequate length the endpoint refuses every call. There is no default secret.
-  if (expected.length < MIN_SECRET_LENGTH) {
-    return NextResponse.json({ ok: false, code: "not_configured" }, { status: 503, headers: NO_STORE });
-  }
-
-  const header = request.headers.get("authorization") ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
-  if (!presented || !matches(presented, expected)) {
-    return NextResponse.json({ ok: false, code: "unauthorized" }, { status: 401, headers: NO_STORE });
-  }
+  const auth = authorizeTrigger(request.headers.get("authorization"), process.env.AI_SCHEDULER_SECRET);
+  if (!auth.ok) return NextResponse.json({ ok: false, code: auth.code }, { status: auth.status, headers: NO_STORE });
 
   const outcome = await runSchedulerOnce();
   if (!outcome.ok) {

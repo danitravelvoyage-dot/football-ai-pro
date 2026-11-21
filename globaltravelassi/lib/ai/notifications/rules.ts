@@ -7,7 +7,7 @@ import type { SchedulerHealth } from "../scheduler/service";
  * Every notice has a dedupe key. The same condition in the same window (one task, one day) yields the same
  * key, so repeated checks never flood the owner's inbox.
  */
-export const NOTICE_KINDS = ["task_failed", "scheduler_unhealthy", "agent_summary"] as const;
+export const NOTICE_KINDS = ["task_failed", "scheduler_unhealthy", "scheduler_missing", "agent_summary", "owner_report"] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 export type Severity = "info" | "warning" | "critical";
 
@@ -67,6 +67,47 @@ export function agentSummaryNotice(points: AgentDayPoint[], dayKey: string): Not
     severity: failing.length > 0 ? "warning" : "info",
     title: `Agent summary for ${dayKey}`,
     body: lines.join("; ").slice(0, 1000),
+    subjectRef: null,
+  };
+}
+
+/**
+ * No worker has run recently while the scheduler is enabled. Raised by the independent watchdog, which does not
+ * depend on the scheduler it checks. Critical, once per day.
+ */
+export function schedulerMissingNotice(health: Pick<SchedulerHealth, "status" | "lastSeenAt">, dayKey: string): Notice | null {
+  if (health.status !== "no_recent_worker") return null;
+  return {
+    dedupeKey: `scheduler_missing:${dayKey}`,
+    kind: "scheduler_missing",
+    severity: "critical",
+    title: "The scheduler has not run recently",
+    body: health.lastSeenAt
+      ? `The last scheduler run was at ${health.lastSeenAt}. Scheduled work is not being processed. Check the external trigger.`
+      : "The scheduler has never reported a run. Check the external trigger and the scheduler settings.",
+    subjectRef: "scheduler",
+  };
+}
+
+export interface OwnerReportInput {
+  runsToday: number;
+  failedToday: number;
+  unreadNotices: number;
+  schedulerStatus: SchedulerHealth["status"];
+}
+
+/**
+ * The scheduled owner report for one day. Counts only. Warning when something failed or needs attention,
+ * otherwise information.
+ */
+export function ownerReportNotice(input: OwnerReportInput, dayKey: string): Notice {
+  const attention = input.failedToday > 0 || input.unreadNotices > 10 || (input.schedulerStatus !== "healthy" && input.schedulerStatus !== "disabled");
+  return {
+    dedupeKey: `owner_report:${dayKey}`,
+    kind: "owner_report",
+    severity: attention ? "warning" : "info",
+    title: `Owner report for ${dayKey}`,
+    body: `Agent runs: ${input.runsToday} (${input.failedToday} failed). Unread notices: ${input.unreadNotices}. Scheduler: ${input.schedulerStatus}.`,
     subjectRef: null,
   };
 }

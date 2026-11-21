@@ -23,11 +23,32 @@ export interface NotificationRecord {
   readAt: string | null;
 }
 
+export interface NotificationFilter {
+  severity?: Severity;
+  kind?: NoticeKind;
+  unreadOnly?: boolean;
+  limit?: number;
+}
+
 /** Storage contract. `insertIfAbsent` keeps one row per dedupe key and reports whether it created it. */
 export interface NotificationStore {
   insertIfAbsent(row: Omit<NotificationRecord, "readAt"> & { id: string }): Promise<{ created: boolean }>;
-  list(limit: number): Promise<NotificationRecord[]>;
+  list(filter: NotificationFilter): Promise<NotificationRecord[]>;
+  countUnread(): Promise<number>;
   markRead(id: string, readAtIso: string): Promise<boolean>;
+}
+
+export const MAX_NOTIFICATION_LIST = 200;
+
+/** Applies a filter to rows. Shared by the in-memory store and the tests. Newest first. */
+export function filterNotifications(rows: NotificationRecord[], f: NotificationFilter): NotificationRecord[] {
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), MAX_NOTIFICATION_LIST);
+  return rows
+    .filter((r) => (f.severity ? r.severity === f.severity : true))
+    .filter((r) => (f.kind ? r.kind === f.kind : true))
+    .filter((r) => (f.unreadOnly ? r.readAt === null : true))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+    .slice(0, limit);
 }
 
 export class MemoryNotificationStore implements NotificationStore {
@@ -39,8 +60,12 @@ export class MemoryNotificationStore implements NotificationStore {
     return { created: true };
   }
 
-  async list(limit: number): Promise<NotificationRecord[]> {
-    return [...this.rows.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)).slice(0, limit);
+  async list(filter: NotificationFilter): Promise<NotificationRecord[]> {
+    return filterNotifications([...this.rows.values()], filter);
+  }
+
+  async countUnread(): Promise<number> {
+    return [...this.rows.values()].filter((r) => r.readAt === null).length;
   }
 
   async markRead(id: string, readAtIso: string): Promise<boolean> {
@@ -91,10 +116,23 @@ export class NotificationService {
     return { created };
   }
 
-  /** Owner only. Newest first. */
-  async list(actor: Actor, limit = 50): Promise<NotificationRecord[]> {
+  /** Owner only. Newest first, optionally filtered by severity, kind or unread state. */
+  async list(actor: Actor, filter: NotificationFilter = {}): Promise<NotificationRecord[]> {
     if (actor.kind !== "owner") throw new ForbiddenActorError("Only the owner reads notifications.");
-    return this.deps.store.list(Math.min(Math.max(limit, 1), 200));
+    return this.deps.store.list(filter);
+  }
+
+  /** Owner only. The number shown on the inbox badge. */
+  async unreadCount(actor: Actor): Promise<number> {
+    if (actor.kind !== "owner") throw new ForbiddenActorError("Only the owner reads notifications.");
+    return this.deps.store.countUnread();
+  }
+
+  /**
+   * The number of unread notices, for platform reports. It returns a count only and never the content.
+   */
+  async unreadTotal(): Promise<number> {
+    return this.deps.store.countUnread();
   }
 
   /** Owner only. Marking a read notice again changes nothing. */

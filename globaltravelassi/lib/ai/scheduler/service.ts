@@ -70,6 +70,8 @@ export interface SchedulerServiceDeps {
   deadEventDeliveries?: () => Promise<number>;
   /** Owner inbox. Overdue work is reported once per day after a run. */
   notify?: (notice: Notice) => Promise<unknown>;
+  /** The scheduled owner report. Called after each run with the current scheduler status; the dedupe key keeps it to one a day. */
+  ownerReport?: (schedulerStatus: SchedulerHealth["status"]) => Promise<unknown>;
 }
 
 /**
@@ -139,7 +141,7 @@ export class SchedulerService {
     }
 
     await this.heartbeat(`ran:${report.leased}`, lease.leased.at(-1)?.id ?? null);
-    await this.reportOverdue();
+    await this.reportAfterRun();
     return report;
   }
 
@@ -184,14 +186,20 @@ export class SchedulerService {
     }
   }
 
-  /** Overdue work is visible from inside a run. A worker that never runs is not, so that case needs an independent check. */
-  private async reportOverdue(): Promise<void> {
-    if (!this.deps.notify) return;
+  /**
+   * Overdue work is visible from inside a run; a worker that never runs is not, so that case has its own watchdog.
+   * The owner report is also written here, because it needs the scheduler's status.
+   */
+  private async reportAfterRun(): Promise<void> {
     try {
-      const notice = schedulerNotice(await this.health(), this.deps.now().toISOString().slice(0, 10));
-      if (notice) await this.deps.notify(notice);
+      const health = await this.health();
+      if (this.deps.notify) {
+        const notice = schedulerNotice(health, this.deps.now().toISOString().slice(0, 10));
+        if (notice) await this.deps.notify(notice);
+      }
+      if (this.deps.ownerReport) await this.deps.ownerReport(health.status);
     } catch (error) {
-      this.deps.logger.error("scheduler.notify_failed", { reason: error instanceof Error ? error.name : "unknown" });
+      this.deps.logger.error("scheduler.report_failed", { reason: error instanceof Error ? error.name : "unknown" });
     }
   }
 

@@ -6,14 +6,14 @@ import { isSupabaseConfigured } from "@/lib/config";
 /** Pages that need a signed-in user. Role checks happen in the page/route as well. */
 const PROTECTED = /^\/(ar|fr|en)\/(dashboard|apply|admin|documents)(\/|$)/;
 
-/** Exact path only. Authentication of this route is its own job (see app/api/ai/scheduler/route.ts). */
-const SCHEDULER_TRIGGER_PATH = "/api/ai/scheduler";
+/** Exact paths only. Each trigger authenticates itself with the bearer secret. */
+const TRIGGER_PATHS = new Set(["/api/ai/scheduler", "/api/ai/scheduler/watchdog"]);
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   // 0. The scheduler trigger has no locale and no browser session. It authenticates itself with a bearer secret.
-  if (pathname === SCHEDULER_TRIGGER_PATH) return NextResponse.next();
+  if (TRIGGER_PATHS.has(pathname)) return NextResponse.next();
 
   // 1. Locale prefix: every page lives under /ar, /fr or /en.
   const first = pathname.split("/")[1] ?? "";

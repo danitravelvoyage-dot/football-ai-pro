@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { NotificationRecord, NotificationStore } from "./service";
+import { MAX_NOTIFICATION_LIST, type NotificationFilter, type NotificationRecord, type NotificationStore } from "./service";
 
 type Row = Record<string, unknown>;
 
@@ -44,10 +44,21 @@ export class SupabaseNotificationStore implements NotificationStore {
     return { created: true };
   }
 
-  async list(limit: number): Promise<NotificationRecord[]> {
-    const { data, error } = await this.db.from("ai_owner_notifications").select("*").order("created_at", { ascending: false }).limit(limit);
+  async list(filter: NotificationFilter): Promise<NotificationRecord[]> {
+    const limit = Math.min(Math.max(filter.limit ?? 50, 1), MAX_NOTIFICATION_LIST);
+    let q = this.db.from("ai_owner_notifications").select("*");
+    if (filter.severity) q = q.eq("severity", filter.severity);
+    if (filter.kind) q = q.eq("kind", filter.kind);
+    if (filter.unreadOnly) q = q.is("read_at", null);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     if (error) fail(error);
     return ((data ?? []) as Row[]).map(toRecord);
+  }
+
+  async countUnread(): Promise<number> {
+    const { count, error } = await this.db.from("ai_owner_notifications").select("id", { count: "exact", head: true }).is("read_at", null);
+    if (error) fail(error);
+    return count ?? 0;
   }
 
   async markRead(id: string, readAtIso: string): Promise<boolean> {

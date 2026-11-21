@@ -67,13 +67,13 @@ describe("the owner's inbox", () => {
     const { svc, store } = inbox();
     expect((await svc.notify(notice())).created).toBe(true);
     expect((await svc.notify(notice())).created).toBe(false);
-    expect((await store.list(10)).length).toBe(1);
+    expect((await store.list({ limit: 10 })).length).toBe(1);
   });
 
   it("personal data in a notice is refused and nothing is stored", async () => {
     const { svc, store } = inbox();
     await expect(svc.notify(notice({ body: "Contact the client at client@example.com." }))).rejects.toBeInstanceOf(NotificationInputError);
-    expect((await store.list(10)).length).toBe(0);
+    expect((await store.list({ limit: 10 })).length).toBe(0);
   });
 
   it("only the owner reads the inbox or marks a notice read; an agent is refused", async () => {
@@ -96,7 +96,7 @@ describe("the owner's inbox", () => {
     const runs = [run("SalesAgent", "failed"), run("SalesAgent", "succeeded")];
     expect(await postAgentSummary(runs, svc, new Date(T))).toBe(true);
     expect(await postAgentSummary(runs, svc, new Date(T))).toBe(false);
-    expect((await store.list(10)).filter((n) => n.kind === "agent_summary").length).toBe(1);
+    expect((await store.list({ limit: 10 })).filter((n) => n.kind === "agent_summary").length).toBe(1);
   });
 });
 

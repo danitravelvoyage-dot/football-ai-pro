@@ -27,6 +27,7 @@ import { SupabaseSchedulerStore } from "./scheduler/supabase-store";
 import { NotificationService } from "./notifications/service";
 import { SupabaseNotificationStore } from "./notifications/supabase-store";
 import { postAgentSummary } from "./notifications/summary";
+import { postOwnerReport } from "./notifications/report";
 import type { Notice } from "./notifications/rules";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
@@ -131,6 +132,7 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     workerName: SCHEDULER_WORKER_NAME,
     deadEventDeliveries: async () => (await eventStore.countDeliveries()).dead,
     notify,
+    ownerReport: async (schedulerStatus) => postOwnerReport(await store.listAgentRuns(1000), notifications, schedulerStatus, now()),
   });
   return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, audit, usage, providers: configs };
 }
