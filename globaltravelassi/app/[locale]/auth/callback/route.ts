@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isLocale, defaultLocale } from "@/lib/i18n/config";
+import { sameOriginPath } from "@/lib/security/redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const locale = isLocale(raw) ? raw : defaultLocale;
   const url = request.nextUrl;
   const next = url.searchParams.get("next") ?? `/${locale}/dashboard`;
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : `/${locale}/dashboard`;
+  const safeNext = sameOriginPath(next, `/${locale}/dashboard`, url.origin);
 
   const supabase = await createServerSupabase();
   const code = url.searchParams.get("code");

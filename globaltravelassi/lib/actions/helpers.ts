@@ -2,6 +2,7 @@ import "server-only";
 import type { ZodError, ZodTypeAny, z } from "zod";
 import { isLocale, type Locale, defaultLocale } from "@/lib/i18n/config";
 import type { ActionState } from "./types";
+import { sameOriginPath } from "@/lib/security/redirect";
 
 export type ParseResult<S extends ZodTypeAny> = { ok: true; data: z.output<S> } | { ok: false; state: ActionState };
 
@@ -34,8 +35,7 @@ export function localeFrom(formData: FormData): Locale {
   return isLocale(value) ? value : defaultLocale;
 }
 
-/** Only allow same-site relative paths (prevents open redirects). */
+/** Only allow same-origin relative paths (prevents open redirects, including tab/newline and backslash tricks). */
 export function safeNext(next: string | null | undefined, locale: Locale, fallback = `/${locale}/dashboard`): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return fallback;
-  return next;
+  return sameOriginPath(next, fallback);
 }

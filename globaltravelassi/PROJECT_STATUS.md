@@ -727,3 +727,48 @@ Baseline: `475a116`. Remediation work committed locally. Nothing pushed. Migrati
 ### Staging decision
 
 **NO-GO for a staging run.** The local evidence is good, but the remaining gates are not passed: the owner has not approved a staging project or any migration run; no backup of a real project has been taken; and the Supabase-specific checks (view ownership, storage removal, roles) have not been run. Local checks are complete; the staging gates are not.
+
+## Pre-staging security fixes, Phase 1 (local, not deployed)
+
+Scope: customer-facing travel and visa website only. AI back-office migrations (0002 to 0017) and features are deferred. Manual payments (USDT, BaridiMob, RedotPay) are unchanged.
+
+### Findings and status
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| S1 | Open redirect in the email-link callback (`app/[locale]/auth/callback/route.ts`): only a leading `//` was rejected, so `/\evil.example` redirected off-site. | FIXED | Callback now uses `sameOriginPath()` against the request origin. Regression tests cover all bypass strings. |
+| S1b | `safeNext` (sign-in and sign-up) did not reject tabs or newlines, so `/<TAB>/evil.example` was accepted. | FIXED | `safeNext` now delegates to `sameOriginPath()`, which rejects control characters, spaces, backslashes, protocol-relative paths and any other origin. |
+| S2 | No Content-Security-Policy. | PARTIAL: report-only | `Content-Security-Policy-Report-Only` served on every response. Zero violations on public and auth pages in en, fr and ar. `script-src` keeps `'unsafe-inline'` (see weakness below). |
+
+### Changes
+
+- `lib/security/redirect.ts` (new): `sameOriginPath(candidate, fallback, base?)`. Character rules first, then a same-origin comparison using the WHATWG URL parser.
+- `lib/actions/helpers.ts`: `safeNext` delegates to `sameOriginPath`.
+- `app/[locale]/auth/callback/route.ts`: uses `sameOriginPath` with the request origin.
+- `next.config.mjs`: report-only CSP header. The Supabase origin comes from the public project URL at build time; a wildcard fallback applies when it is missing.
+- `tests/security/safe-redirect.test.ts` (new, 59 tests).
+- `tests/browser/smoke.mjs`: two checks added (header served; no violations on public and auth pages in three languages). Smoke test now 24 of 24.
+- `docs/security/CONTENT_SECURITY_POLICY.md` and `docs/security/REDIRECT_SECURITY.md` (new).
+
+### Verification
+
+- `npm run verify` exit code 0: lint, typecheck, 1311 tests passed (3 skipped, unchanged), production build.
+- `npm run test:browser`: 24 of 24 checks passed.
+- Old logic was confirmed to send all three tab and newline bypass strings to another host before the fix.
+- The violation listener was confirmed to detect a deliberate blocked request, so the zero-violation result is not vacuous.
+
+### Known weakness
+
+- `script-src` allows `'unsafe-inline'`, because Next.js App Router inlines bootstrap scripts without a nonce. The policy gives limited cross-site scripting protection until nonces (or hashes) are added.
+- Without `NEXT_PUBLIC_SUPABASE_URL` at build time, the policy uses the `*.supabase.co` wildcard. Staging and production builds must set the variable.
+
+### Remaining risks
+
+- Logged-in pages (dashboard, application, uploads, payment panel, admin) are not run in a browser. They need a Supabase project, which does not exist for this phase. Their CSP behaviour is unverified.
+- Server-action form submissions are not exercised in a browser.
+- No violation-collection endpoint exists.
+- The live database schema, migrations 0002 to 0019 and migration 0010 are unchanged and unapplied. No database work was done in this phase.
+
+### Staging decision
+
+NO-GO. The redirect bypasses are fixed and tested. Staging still needs the logged-in browser tests, the CSP enforcement path, the customer notification decision and the approvals listed in the pre-staging readiness report.

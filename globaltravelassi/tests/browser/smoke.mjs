@@ -133,6 +133,28 @@ async function main() {
         }
       }
 
+      // Content-Security-Policy (report-only): the header is served, and no page on the public and auth routes raises a
+      // violation. Violations are collected from the browser's securitypolicyviolation event, which also fires in report-only mode.
+      const cspHeaderRes = await fetch(`${base}/en`, { redirect: "manual" });
+      const cspHeader = cspHeaderRes.headers.get("content-security-policy-report-only") ?? "";
+      check("CSP report-only header is served", cspHeader.includes("default-src 'self'") && cspHeader.includes("frame-ancestors 'none'"), cspHeader ? "present" : "missing");
+      const cspViolations = [];
+      for (const locale of ["en", "fr", "ar"]) {
+        for (const path of ["", "/auth/login", "/auth/register", "/auth/forgot"]) {
+          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+          await page.addInitScript(() => {
+            window.__csp = [];
+            document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`));
+          });
+          await page.goto(`${base}/${locale}${path}`, { waitUntil: "load" });
+          await page.waitForTimeout(500);
+          const found = await page.evaluate(() => window.__csp);
+          for (const v of found) cspViolations.push(`${locale}${path || "/"}: ${v}`);
+          await page.close();
+        }
+      }
+      check("no CSP violations on public and auth pages (en, fr, ar)", cspViolations.length === 0, cspViolations.slice(0, 3).join(" | ") || "0 violations");
+
       // Phone width: no horizontal page scroll on the home page.
       const phone = await browser.newPage({ viewport: { width: 375, height: 760 }, isMobile: true });
       await phone.goto(`${base}/en`, { waitUntil: "domcontentloaded" });
