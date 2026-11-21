@@ -59,10 +59,16 @@ export class OpenAICompatibleProvider implements LLMProvider {
       throw new ProviderError(`Provider returned HTTP ${response.status}.`, retryable, this.id);
     }
 
-    const data = (await response.json()) as {
+    let data: {
       choices?: { message?: { content?: string } }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch {
+      // A reply that is not JSON cannot be fixed by retrying the same request.
+      throw new ProviderError("Provider returned a reply that is not JSON.", false, this.id);
+    }
     const text = data.choices?.[0]?.message?.content;
     if (typeof text !== "string") {
       throw new ProviderError("Provider returned no text.", false, this.id);

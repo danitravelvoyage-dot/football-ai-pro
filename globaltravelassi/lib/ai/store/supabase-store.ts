@@ -513,11 +513,26 @@ export class SupabaseUsageStore implements UsageStore {
     return (data as { requests: number } | null)?.requests ?? 0;
   }
 
+  /**
+   * Adds one request to the day's counters. This is a read then a write, so two requests in the same instant can
+   * undercount. Quota enforcement is therefore approximate under concurrency; see PROJECT_STATUS.md.
+   */
   async record(entry: { providerId: string; day: string; tokensIn: number; tokensOut: number }): Promise<void> {
-    const current = await this.db.from("ai_usage").select("requests, tokens").eq("day", entry.day).eq("provider_id", entry.providerId).maybeSingle();
-    const requests = ((current.data as { requests: number } | null)?.requests ?? 0) + 1;
-    const tokens = ((current.data as { tokens: number } | null)?.tokens ?? 0) + entry.tokensIn + entry.tokensOut;
-    const { error } = await this.db.from("ai_usage").upsert({ day: entry.day, provider_id: entry.providerId, requests, tokens });
+    const current = await this.db
+      .from("ai_usage")
+      .select("requests, tokens, tokens_in, tokens_out")
+      .eq("day", entry.day)
+      .eq("provider_id", entry.providerId)
+      .maybeSingle();
+    const c = (current.data ?? {}) as { requests?: number; tokens?: number; tokens_in?: number; tokens_out?: number };
+    const { error } = await this.db.from("ai_usage").upsert({
+      day: entry.day,
+      provider_id: entry.providerId,
+      requests: (c.requests ?? 0) + 1,
+      tokens: (c.tokens ?? 0) + entry.tokensIn + entry.tokensOut,
+      tokens_in: (c.tokens_in ?? 0) + entry.tokensIn,
+      tokens_out: (c.tokens_out ?? 0) + entry.tokensOut,
+    });
     if (error) fail(error);
   }
 }

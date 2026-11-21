@@ -1,7 +1,7 @@
 # GLOBALTRAVELASSI: project status and audit
 
 Status date: 2026-11-20. Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0013 are all unapplied).
+No migration has been applied to any database (0002 to 0014 are all unapplied).
 
 ## Verification (this change)
 
@@ -9,7 +9,7 @@ No migration has been applied to any database (0002 to 0013 are all unapplied).
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 43 files, 580 tests, all passing (527 at the previous checkpoint, 435 before the scheduler) |
+| `npm test` (vitest) | 47 files, 616 tests, all passing (580 at the previous checkpoint, 435 before the scheduler) |
 | `npm run build` | passes; `/api/ai/scheduler` and `/[locale]/admin/command-center/scheduler` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
 | SQL tests (PGlite, real Postgres engine) | 21 scheduler tests, including RLS, timezone guard, lease reclaim, fencing, dead letters and TRUNCATE refusal |
@@ -41,6 +41,54 @@ Not built in this session: the inbox page, the scheduled owner report, scheduler
 **Phase 6 (unified view, partial).** The command center overview now shows real counts from each module (active campaigns, content awaiting review, unread notices, scheduler status, knowledge entries; unavailable shown as such) and links to every module. The existing executive, agent, task, approval, monitoring and memory pages are unchanged. There is no dedicated analytics or report page yet.
 
 **Not built in this session:** an automated test of the Supabase stores for campaigns, content review, notifications and knowledge versions (they are type-checked and their SQL is tested, but no store-level test exists); a rendered browser check of the new pages; campaign integration with external ad platforms; knowledge retrieval by tag for agents; a dedicated analytics and report page.
+
+## Session 4 additions (provider reliability, knowledge retrieval, analytics, execution trace)
+
+**AI provider (P0), partial.** Built and tested:
+- Adapter tests over real HTTP against a local test server. The replies in those tests are protocol fixtures, not model output, and the application never uses them.
+- Rate limits and server errors are retryable; rejected requests are not. A timeout is retryable. A reply that is not JSON is a non-retryable provider error. Error messages never contain the secret.
+- Retries on the same provider with backoff (500 ms, 1 s, 2 s, capped at 8 s), per provider, configured with `AI_*_MAX_RETRIES`.
+- A circuit breaker per provider: opens after three consecutive failures, for 60 seconds. Health snapshot: calls, failures, last error class, open-until time. In-process only: it is not shared between server instances.
+- Token usage per provider and day. Cost from an owner-entered price list (`AI_*_PRICE_IN_PER_1K` and `AI_*_PRICE_OUT_PER_1K`). With no price the cost is null. The platform never estimates a price.
+- Secrets: the configuration holds only the name of a secret variable. A test checks that the value never appears in the configuration.
+
+**Not done for the provider, and why:**
+- **Real model execution has not been run.** No hosted key has been provided, and no local model is installed in this environment. Provider calls have been tested only against the local test server.
+- Model selection is one configured model per provider. There is no per-agent model choice.
+- Health is not yet on the owner dashboard.
+- Usage counters are read then written, so concurrent requests can undercount the daily quota. Quota enforcement is approximate under concurrency (finding S1 below).
+
+**Knowledge intelligence (P1), built.** Retrieval is still gated by the existing rules (current, language, country, category, verified only). Within that gate:
+- Tag filter: only entries that share a tag with the request are returned.
+- Relevance ranking: a score from matching objective terms (any script), tags, reliability, country specificity and freshness. Each result carries the reasons for its score.
+- Country and language context. Reliability: verified official ranks above verified internal.
+- Version awareness: the agent receives the current version. Editing an entry resets it to unverified until the owner verifies it again.
+- Retrieval audit: every retrieval writes an audit row with entry identifiers, versions and scores. It never writes the entry text.
+
+**Analytics engine (P1), built.** Pure functions over stored rows, with daily, weekly and monthly periods:
+- Approval conversion. Only the owner's own decisions count; expired items do not.
+- Content performance per kind.
+- Agent performance per period: volume, failure rate and average duration.
+- Lead conversion, using applications as leads. Revenue, counting only payments marked received.
+- Model cost, with the total withheld while any provider or usage day is unpriced.
+- Analytics page for the owner, with a notice when cost data is incomplete.
+
+**Multi-agent (P1), partial.** Execution trace for one run: steps in order, dependencies, attempts, latest quality status, steps waiting on unfinished dependencies, and cross-agent conflicts. The trace contains identifiers and codes only.
+
+**Not built in this session:**
+- Agent-to-agent delegation, specialist review and quality consensus. These need a new protocol and are not started.
+- Lead pipeline, lead scoring, customer history, follow-up automation and campaign attribution. There is no lead table; the analytics currently use applications as the only lead source.
+- Competitor intelligence (P2). Public-source monitoring needs an approved list of sources and a fetch design. Not started.
+- Autonomous CEO (P2). Not started.
+
+**Migration 0014 (not applied):** input and output token columns on `ai_usage`. Days recorded before it are unpriced, not estimated.
+
+**Security findings (this session):**
+- S1. Usage counters are read then written. Concurrent requests can undercount the daily quota, so quota enforcement is approximate. Fix: an atomic upsert function. Not built.
+- S2. The provider circuit breaker is per process. Several instances will each trip separately.
+- S3. The `ai_campaigns` policy from migration 0002 still lets the operator write campaigns (`ai_campaigns_rw`). Migration 0013 tightens the new campaign tables but not that policy. Needs a decision.
+- S4. The execution trace and retrieval audit contain identifiers and scores only. A test checks that entry text does not reach the audit.
+- S5. Secrets: no secret value appears in provider configuration or in adapter error text. Tested against a server that echoes the key.
 
 ## Architecture (summary)
 
@@ -119,7 +167,7 @@ Priority order follows the brief's list.
 
 ## Completion
 
-Estimated **about 62%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward. Session 3 completed notifications and added campaigns, content review and knowledge admin. Partial modules still count at half weight, because the Supabase store paths are not yet store-tested and no rendered browser check has been done.
+Estimated **about 68%** of planned platform features, by module count with partial modules counted at half weight. This is a judgement, not a measured figure. At the first checkpoint: 10 of 17 modules built, 5 partial, 2 not started. Session 2 moved business memory and notifications forward. Session 3 completed notifications and added campaigns, content review and knowledge admin. Partial modules still count at half weight, because the Supabase store paths are not yet store-tested and no rendered browser check has been done.
 
 ## Recommended next priorities
 

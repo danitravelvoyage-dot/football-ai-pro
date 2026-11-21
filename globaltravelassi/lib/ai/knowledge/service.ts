@@ -4,6 +4,7 @@ import { getAgent } from "../registry";
 import { assertToolAllowed, ToolPermissionError } from "../tools";
 import type { Actor, AgentKey } from "../types";
 import { searchEntries } from "./search";
+import { rankEntries } from "./ranking";
 import { kbEntryInputSchema, selectForAgent, toAgentFact, type KbEntry, type KbEntryInput, type ReliabilityStatus } from "./rules";
 import type { KbStore } from "./store";
 
@@ -115,7 +116,7 @@ export class KbService {
   }
 
   /** What an agent may use. Refused unless the agent's role includes the knowledge-read tool. */
-  async forAgent(agent: AgentKey, query: { country: KbEntry["country"]; language: KbEntry["language"]; categories?: KbEntry["category"][]; limit?: number }) {
+  async forAgent(agent: AgentKey, query: { country: KbEntry["country"]; language: KbEntry["language"]; categories?: KbEntry["category"][]; limit?: number; objective?: string; tags?: string[] }) {
     try {
       assertToolAllowed(agent, "store.readKnowledge", getAgent(agent).tools);
     } catch (error) {
@@ -124,6 +125,19 @@ export class KbService {
     }
     const rows = await this.deps.store.list({ limit: KB_SCAN_LIMIT });
     if (rows.length >= KB_SCAN_LIMIT) throw new KbValidationError("The knowledge base is too large to scan for one agent query.");
-    return selectForAgent(rows, query, this.deps.now()).map(toAgentFact);
+    const now = this.deps.now();
+    const limit = query.limit ?? 10;
+    // The gate (current, language, country, category) runs first. Ranking only orders what the gate admitted.
+    const gated = selectForAgent(rows, { ...query, limit: KB_SCAN_LIMIT }, now);
+    const ranked = query.objective || (query.tags && query.tags.length > 0)
+      ? rankEntries(gated, query, now).slice(0, limit)
+      : gated.slice(0, limit).map((entry) => ({ entry, score: 0, reasons: [] as string[] }));
+    await this.audit({ kind: "agent", agent }, "kb.retrieved", agent, {
+      entries: ranked.map((r) => ({ id: r.entry.id, version: r.entry.version, score: r.score })),
+      country: query.country,
+      language: query.language,
+      ranked: Boolean(query.objective || (query.tags && query.tags.length > 0)),
+    });
+    return ranked.map((r) => ({ ...toAgentFact(r.entry), version: r.entry.version, tags: r.entry.tags, country: r.entry.country, relevance: r.score, reasons: r.reasons }));
   }
 }

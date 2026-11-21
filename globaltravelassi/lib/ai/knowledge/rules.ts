@@ -80,6 +80,10 @@ export interface KbQuery {
   language: Language;
   categories?: readonly KbCategory[];
   limit?: number;
+  /** What the agent is working on. When given, entries are ranked by how well they match it. */
+  objective?: string;
+  /** Only entries sharing at least one of these tags are considered. */
+  tags?: readonly string[];
 }
 
 /**
