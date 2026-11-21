@@ -1,15 +1,15 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21 (session 10). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+Status date: 2026-11-21 (session 11). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
 No migration has been applied to any database (0002 to 0017 are all unapplied). The whole chain was applied to a disposable PGlite database in session 10, and nothing else.
 
-## Verification (session 10, CEO readiness audit)
+## Verification (session 11, local AI activation)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 67 files, 870 tests, all passing (838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 67 files, 876 passing and 1 skipped (the opt-in live model test), all passing (870 at session 10, 838 at session 9, 778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
 | Browser (`npm run test:browser`, Chromium, production build) | 22 of 22 checks pass: trigger refusals; public home in en, fr and ar with correct direction and no errors; all 28 admin pages redirect to sign-in in en, fr and ar (84 redirects); sign-in, register and forgot forms render in all three locales; no horizontal scroll at 375 px |
 | `npm run verify` | passes: lint, typecheck, unit and integration tests, production build (includes `/[locale]/admin/command-center/conflicts`) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
@@ -165,6 +165,22 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 11 additions (local AI activation)
+
+**Status at the end of this session: no model has run. No inference result exists.**
+
+- **Installation: not installed.** Ollama is not on this machine, and no model file exists. Hardware is adequate: 4 CPUs, 16 GB RAM, 28 GB free disk.
+- **Network: approved, then reachable.** The first attempt to reach `ollama.com` and `huggingface.co` was refused by the egress policy (403). A personal environment, "football-ai-pro (local AI download)", was proposed and approved by the owner, allowing only `ollama.com` and `registry.ollama.ai`. Both now answer. Nothing has been downloaded or installed yet.
+- **Installation needs owner approval** (writes software and fetches about 400 MB). Commands are in the final report.
+- **Audit defect fixed: the mock could answer in place of a real model.** The mock was first in the provider chain. With `AI_MOCK_ENABLED=true` and a local model enabled, every request was answered with placeholder text. The mock is now enabled only when no real provider is enabled.
+- **Model default:** `AI_LOCAL_MODEL` now defaults to `qwen2.5:0.5b`. The local provider is off unless `AI_LOCAL_ENABLED=true`.
+- **Tests added:**
+  - A down local model returns no output, even with the mock flag set.
+  - An empty reply and a reply with no JSON are rejected.
+  - A hosted-provider key never reaches the local endpoint.
+  - A live inference test, opt-in with `LOCAL_AI_LIVE=1` (`npm run test:local-model`). It is skipped in `npm run verify`. Run without a server, it fails with "No LLM provider is available" and produces no output.
+- **Configuration:** `.env.example` lists the local settings, with placeholders only and no secrets.
 
 ## Session 10 additions (CEO readiness audit)
 

@@ -34,6 +34,9 @@ export function loadProviderConfig(env: Record<string, string | undefined>): Pro
   const localEnabled = env.AI_LOCAL_ENABLED === "true";
   const hostedEnabled = env.AI_HOSTED_FREE_ENABLED === "true";
   const paidApproved = (env.AI_OWNER_APPROVED_PAID_PROVIDERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // The mock is first in the chain, so it must never run alongside a real provider: it would answer every request
+  // and the real model would never be asked. It is enabled only when the developer asks for it and nothing real is on.
+  const anyRealEnabled = localEnabled || hostedEnabled || paidApproved.includes("paid-placeholder");
 
   const providers: ProviderConfig[] = [
     // The mock returns placeholder text. It is off unless a developer turns it on, and it can never run in production.
@@ -42,7 +45,7 @@ export function loadProviderConfig(env: Record<string, string | undefined>): Pro
       id: "mock",
       kind: "mock",
       costTier: "free",
-      enabled: env.AI_MOCK_ENABLED === "true" && env.NODE_ENV !== "production",
+      enabled: env.AI_MOCK_ENABLED === "true" && env.NODE_ENV !== "production" && !anyRealEnabled,
       ownerApproved: true,
       dailyRequestLimit: Number.MAX_SAFE_INTEGER,
     },
@@ -54,7 +57,8 @@ export function loadProviderConfig(env: Record<string, string | undefined>): Pro
       ownerApproved: true,
       dailyRequestLimit: Number(env.AI_LOCAL_DAILY_LIMIT ?? 500),
       baseUrl: env.AI_LOCAL_BASE_URL ?? "http://localhost:11434/v1",
-      model: env.AI_LOCAL_MODEL ?? "qwen2.5:7b",
+      // The owner's initial local model. Small enough for a CPU-only machine. Change with AI_LOCAL_MODEL.
+      model: env.AI_LOCAL_MODEL ?? "qwen2.5:0.5b",
       maxRetries: Number(env.AI_LOCAL_MAX_RETRIES ?? 1),
       price: priceFrom(env, "AI_LOCAL"),
     },

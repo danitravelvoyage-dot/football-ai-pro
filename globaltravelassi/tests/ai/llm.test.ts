@@ -23,6 +23,19 @@ describe("provider configuration", () => {
     expect(providers.filter((p) => p.enabled)).toEqual([]);
   });
 
+  it("never runs the mock alongside a real provider, so it cannot answer in place of the model", () => {
+    const withLocal = loadProviderConfig({ AI_MOCK_ENABLED: "true", AI_LOCAL_ENABLED: "true" });
+    expect(withLocal.find((p) => p.id === "mock")?.enabled).toBe(false);
+    expect(withLocal.find((p) => p.id === "local-ollama")?.enabled).toBe(true);
+    expect(loadProviderConfig({ AI_MOCK_ENABLED: "true", AI_HOSTED_FREE_ENABLED: "true" }).find((p) => p.id === "mock")?.enabled).toBe(false);
+  });
+
+  it("the initial local model is qwen2.5:0.5b, and local AI stays off until the owner enables it", () => {
+    const local = loadProviderConfig({}).find((p) => p.id === "local-ollama");
+    expect(local?.enabled).toBe(false);
+    expect(local?.model).toBe("qwen2.5:0.5b");
+  });
+
   it("enables the mock only for a developer outside production", () => {
     expect(loadProviderConfig({ AI_MOCK_ENABLED: "true" }).find((p) => p.id === "mock")?.enabled).toBe(true);
     expect(loadProviderConfig({ AI_MOCK_ENABLED: "true", NODE_ENV: "production" }).find((p) => p.id === "mock")?.enabled).toBe(false);

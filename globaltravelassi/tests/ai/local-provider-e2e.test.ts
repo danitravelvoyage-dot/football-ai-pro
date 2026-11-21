@@ -115,3 +115,45 @@ describe("free local provider, end to end", () => {
     await expect(runtime.run(getAgent("MarketResearchAgent"), input())).rejects.toThrow(/does not match its contract/);
   });
 });
+
+describe("invalid replies and failures never produce an output", () => {
+  it("an empty reply is rejected, not stored as an empty result", async () => {
+    seen.length = 0;
+    next = { status: 200, body: { choices: [{ message: { content: "" } }] } };
+    const { gateway } = gatewayFor({});
+    const runtime = new AgentRuntime(gateway);
+    await expect(runtime.run(getAgent("MarketResearchAgent"), input())).rejects.toThrow();
+  });
+
+  it("a reply with no JSON object is rejected", async () => {
+    seen.length = 0;
+    next = { status: 200, body: { choices: [{ message: { content: "I cannot help with that request." } }] } };
+    const { gateway } = gatewayFor({});
+    const runtime = new AgentRuntime(gateway);
+    await expect(runtime.run(getAgent("MarketResearchAgent"), input())).rejects.toThrow(/no JSON object/);
+  });
+
+  it("a down local model does not fall back to the mock, even when the mock flag is set", async () => {
+    const { MockProvider } = await import("@/lib/ai/llm/mock-provider");
+    seen.length = 0;
+    next = { status: 503, body: { error: "down" } };
+    const env = { AI_LOCAL_ENABLED: "true", AI_LOCAL_BASE_URL: base, AI_LOCAL_MAX_RETRIES: "0", AI_MOCK_ENABLED: "true" };
+    const configs = loadProviderConfig(env);
+    const providers = configs.filter((c) => c.enabled).map((config) => ({
+      config,
+      provider: config.kind === "mock" ? new MockProvider(config.id) : new OpenAICompatibleProvider({ id: config.id, baseUrl: config.baseUrl ?? "", model: config.model ?? "" }),
+    }));
+    expect(providers.map((p) => p.config.id)).toEqual(["local-ollama"]);
+    const gateway = new LLMGateway({ providers, usage: new InMemoryUsageStore(), now: () => new Date(), sleep: async () => undefined });
+    await expect(new AgentRuntime(gateway).run(getAgent("MarketResearchAgent"), input())).rejects.toThrow();
+    expect(seen).toHaveLength(1);
+  });
+
+  it("a hosted-provider key in the environment is never sent to the local endpoint", async () => {
+    seen.length = 0;
+    next = { status: 200, body: { choices: [{ message: { content: findingsJson } }] } };
+    const { gateway } = gatewayFor({ AI_HOSTED_API_KEY: "sk-test-not-real-0000" });
+    await new AgentRuntime(gateway).run(getAgent("MarketResearchAgent"), input());
+    expect(seen[0]?.auth).toBeUndefined();
+  });
+});
