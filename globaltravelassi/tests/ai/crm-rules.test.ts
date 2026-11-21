@@ -44,9 +44,9 @@ describe("pipeline stages", () => {
   });
 
   it("requires a reason to mark a lead lost", () => {
-    expect(stageChangeSchema.safeParse({ to: "lost", reason: null }).success).toBe(false);
-    expect(stageChangeSchema.safeParse({ to: "lost", reason: "Went elsewhere" }).success).toBe(true);
-    expect(stageChangeSchema.safeParse({ to: "contacted", reason: null }).success).toBe(true);
+    expect(stageChangeSchema.safeParse({ to: "lost", reason: null, expectedVersion: 1 }).success).toBe(false);
+    expect(stageChangeSchema.safeParse({ to: "lost", reason: "Went elsewhere", expectedVersion: 1 }).success).toBe(true);
+    expect(stageChangeSchema.safeParse({ to: "contacted", reason: null, expectedVersion: 1 }).success).toBe(true);
   });
 });
 

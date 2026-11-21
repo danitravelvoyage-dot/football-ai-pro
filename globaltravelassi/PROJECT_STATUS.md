@@ -437,3 +437,51 @@ Estimated **about 72%** of planned platform features (session 5 moved the CRM fr
 4. Build notifications and the scheduled owner report, using the scheduler's job kind mechanism.
 5. Build campaign management on top of the existing workflow and approval engine.
 6. Build knowledge base create and edit forms with the existing rules.
+
+## Phase 13: Owner control and approval center (partial, local)
+
+Status: the decision core, CRM transition control and tests are built and verified locally. The approval-center page, the source registry and two review hooks are **not built yet**. Nothing is pushed, nothing deployed, and migration 0018 is **not applied**.
+
+### Built and verified
+
+- `lib/ai/review/rules.ts`: review kinds (held_answer, escalated_claim, crm_stage_disagreement, rejected_proposal, crm_transition), statuses, allowed decisions per kind, 7-day expiry.
+- `lib/ai/review/service.ts`: owner-only open, list, get and decide. Each decision is checked for kind, state and expiry, requires the version the owner saw, runs a precheck for approvals that can go stale, is written as a compare-and-set, is audited (actor, previous and new status, reason), and only then runs its effect. Refusals are audited as `review.refused`.
+- `lib/ai/review/store.ts` and `supabase-store.ts`: compare-and-set decide in memory and on Supabase.
+- `lib/ai/review/center.ts`: wires effects and prechecks. Approved CRM transitions are re-checked before they are recorded and then applied through the CRM service. Approved held answers are delivered through `CommunicationService.deliverApproved` (owner only, one hop).
+- `lib/ai/crm/*`: transition kinds (standard, exceptional, forbidden). Exceptional moves (reopening a lost lead) become a review item and are not applied directly. Lead version and compare-and-set saves stop stale updates. Every move is audited with previous and new versions.
+- `lib/ai/services.ts`: composition root builds the review center. CRM and communication open items through it.
+- `lib/ai/collaboration/communication.ts`: held answers open a `held_answer` item with sources and reason codes when a review dependency is supplied.
+
+### Migration 0018 (NOT applied; owner approval required)
+
+`supabase/migrations/0018_owner_approval_center.sql`:
+- Creates `ai_review_items` with kind and status checks, JSON size limits, a decided-consistency check, and a guard trigger that blocks changes to decided items and to the fields that identify what is being approved.
+- RLS: admin can read and decide; admin or operator can insert. Anonymous access is revoked. Delete and truncate are revoked.
+- Adds `ai_leads.version` with a bump trigger.
+- Adds `category`, `jurisdiction`, `status`, `expires_at`, `validated_at` and `updated_at` to `ai_sources_allowlist`.
+- Applies cleanly on PGlite in the migration chain test. It has not been run against any real Supabase project.
+
+### Tests
+
+- `tests/ai/review-center.test.ts` (13), `tests/ai/review-integration.test.ts` (11, end-to-end CRM approval, held-answer delivery once, duplicate and replay refusal, stale refusal, expiry, agent and system refusal, audit), `tests/ai/crm-concurrency.test.ts` (10), CRM service and rules tests updated for versions.
+- `tests/db/migration-validation.test.ts` and `migration-chain.test.ts` updated to include 0018.
+- `npm run verify` passes: lint with zero warnings, typecheck, 953 tests, production build.
+
+### Not built yet
+
+1. Approval-center page (`app/[locale]/admin/command-center/review/`) with decision forms and server actions in `lib/actions/review.ts`.
+2. Source registry service and UI over `ai_sources_allowlist`: add, edit, disable, revalidate, official-source priority. The visa allowlist still reads the host list directly.
+3. Hooks for escalated stage disagreements (StageAnswerService) and rejected proposals (engine REJECTED branch). Rejected-proposal `request_revision` only records the request; the orchestrator has no retry entry point.
+4. Escalated claims are still shown only through existing approvals.
+
+### Known risks
+
+- Effects run after the decision is recorded. If an effect fails after recording, the decision is not rolled back. The precheck reduces this for CRM transitions only.
+- Audit uses the existing `ai_events` table, with previous and new values in `meta`. There is no separate decisions table.
+- Source host approval is not content verification.
+- The Supabase store and RLS policies are tested on PGlite and in unit tests only.
+
+### Owner decisions needed
+
+- Approve applying migration 0018 to a staging project.
+- Confirm the remaining items (page, source registry, two hooks) before they are built.

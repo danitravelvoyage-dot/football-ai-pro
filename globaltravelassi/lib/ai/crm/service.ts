@@ -5,6 +5,7 @@ import {
   LEAD_STAGES,
   assessLead,
   canMoveStage,
+  transitionKind,
   interactionSchema,
   isTerminal,
   leadInputSchema,
@@ -44,8 +45,17 @@ export class CrmRuleError extends Error {
   }
 }
 
+export class CrmStaleError extends Error {
+  constructor() {
+    super("This lead changed after you read it. Reload and try again.");
+    this.name = "CrmStaleError";
+  }
+}
+
 export interface LeadRecord {
   id: string;
+  /** Bumped by the database on every change. A write names the version it read. */
+  version: number;
   label: string;
   source: LeadSource;
   applicationId: string | null;
@@ -103,7 +113,11 @@ export interface CrmStore {
   listLeads(filter: { stage?: LeadStage; includeArchived: boolean; limit: number }): Promise<LeadRecord[]>;
   /** Every non-archived lead, for the funnel. Bounded by the store's own limit. */
   allActiveLeads(limit: number): Promise<LeadRecord[]>;
-  saveLead(l: LeadRecord, changedBy: string): Promise<void>;
+  /**
+   * Writes the lead only if its stored version is still `expectedVersion`. Throws CrmStaleError otherwise.
+   * The stored version is bumped by the store.
+   */
+  saveLead(l: LeadRecord, changedBy: string, expectedVersion: number): Promise<void>;
   /** Oldest first. */
   listHistory(leadIds: string[]): Promise<StageHistoryRow[]>;
   addInteraction(row: InteractionRow): Promise<void>;
@@ -114,7 +128,16 @@ export interface CrmStore {
   listFollowUps(filter: { statuses: FollowUpStatus[]; limit: number }): Promise<FollowUpRecord[]>;
 }
 
+export class CrmRequiresApprovalError extends Error {
+  constructor(public readonly reviewId: string) {
+    super("This move needs the owner's approval. It is waiting in the approval center.");
+    this.name = "CrmRequiresApprovalError";
+  }
+}
+
 export interface CrmServiceDeps {
+  /** Opens an owner review for an exceptional move. Returns the review id. Required for exceptional moves. */
+  requestApproval?: (request: { leadId: string; from: LeadStage; to: LeadStage; expectedVersion: number; reason: string | null; requestedBy: string }) => Promise<string>;
   store: CrmStore;
   audit: AuditSink;
   now: () => Date;
@@ -199,6 +222,7 @@ export class CrmService {
     const at = this.nowIso();
     const lead: LeadRecord = {
       id: this.deps.newId(),
+      version: 1,
       label: input.label,
       source: input.source,
       applicationId: input.applicationId,
@@ -219,20 +243,72 @@ export class CrmService {
   }
 
   /** Moves a lead along the pipeline. Refused moves are not written. Closing a lead closes its open follow-ups. */
+  /**
+   * Moves a lead along the pipeline. Standard moves apply at once. Exceptional moves (backwards, or reopening a lost
+   * lead) are refused here with CrmRequiresApprovalError: they wait for the owner's decision in the approval center.
+   * Forbidden moves are refused. The move is checked against the lead's current stage and version.
+   */
   async changeStage(actor: Actor, leadId: string, raw: unknown): Promise<LeadRecord> {
     const by = owner(actor);
-    const change: StageChange = parse(stageChangeSchema, raw);
+    const change: StageChange & { expectedVersion: number } = parse(stageChangeSchema, raw);
     const lead = await this.loadLead(leadId);
     this.assertOpen(lead);
-    if (!canMoveStage(lead.stage, change.to)) throw new CrmRuleError(`A lead cannot move from ${lead.stage} to ${change.to}.`);
-    if (change.reason) noPersonalData({ reason: change.reason });
+    if (lead.version !== change.expectedVersion) throw new CrmStaleError();
+    const kind = transitionKind(lead.stage, change.to);
+    if (kind === "forbidden") throw new CrmRuleError(`A lead cannot move from ${lead.stage} to ${change.to}.`);
+    if (kind === "exceptional") throw new CrmRequiresApprovalError(await this.requestExceptional(lead, change.to, change.reason, by));
+    return this.applyStage(by, lead, change.to, change.reason, change.expectedVersion);
+  }
 
+  /** Like changeStage, but returns the review id instead of throwing when the move needs the owner's approval. */
+  async requestStageChange(actor: Actor, leadId: string, raw: unknown): Promise<{ status: "applied"; lead: LeadRecord } | { status: "pending_owner"; reviewId: string }> {
+    try {
+      return { status: "applied", lead: await this.changeStage(actor, leadId, raw) };
+    } catch (error) {
+      if (error instanceof CrmRequiresApprovalError) return { status: "pending_owner", reviewId: error.reviewId };
+      throw error;
+    }
+  }
+
+  /**
+   * Applies an exceptional move the owner has approved. Refused unless the lead still has the version and the stage the
+   * owner approved; a lead changed since then is not moved.
+   */
+  async applyApprovedTransition(by: string, request: { leadId: string; from: LeadStage; to: LeadStage; expectedVersion: number; reason: string | null }): Promise<LeadRecord> {
+    const lead = await this.loadLead(request.leadId);
+    this.assertOpen(lead);
+    if (lead.version !== request.expectedVersion || lead.stage !== request.from) throw new CrmStaleError();
+    if (transitionKind(lead.stage, request.to) === "forbidden") throw new CrmRuleError(`A lead cannot move from ${lead.stage} to ${request.to}.`);
+    return this.applyStage(by, lead, request.to, request.reason, request.expectedVersion);
+  }
+
+  /** Checks a proposed approval before the owner records it: the lead must still be where the request was made. */
+  async checkApprovedTransition(request: { leadId: string; from: LeadStage; expectedVersion: number }): Promise<void> {
+    const lead = await this.loadLead(request.leadId);
+    if (lead.version !== request.expectedVersion || lead.stage !== request.from) throw new CrmStaleError();
+  }
+
+  private async requestExceptional(lead: LeadRecord, to: LeadStage, reason: string | null, by: string): Promise<string> {
+    if (!this.deps.requestApproval) throw new CrmRuleError("This move needs owner approval, and no approval center is connected.");
+    const reviewId = await this.deps.requestApproval({ leadId: lead.id, from: lead.stage, to, expectedVersion: lead.version, reason, requestedBy: by });
+    await this.audit(by, "transition_requested", "crm_lead", lead.id, { from: lead.stage, to, reviewId });
+    return reviewId;
+  }
+
+  private async applyStage(by: string, lead: LeadRecord, to: LeadStage, reason: string | null, expectedVersion: number): Promise<LeadRecord> {
+    if (reason) noPersonalData({ reason });
     const from = lead.stage;
-    const updated: LeadRecord = { ...lead, stage: change.to, stageReason: change.reason, updatedAt: this.nowIso() };
-    await this.deps.store.saveLead(updated, by);
-    await this.audit(by, "stage_changed", "crm_lead", lead.id, { from, to: change.to });
-
-    if (isTerminal(change.to)) {
+    const updated: LeadRecord = { ...lead, stage: to, stageReason: reason, updatedAt: this.nowIso(), version: expectedVersion + 1 };
+    await this.deps.store.saveLead(updated, by, expectedVersion);
+    await this.audit(by, "stage_changed", "crm_lead", lead.id, {
+      from,
+      to,
+      previousVersion: expectedVersion,
+      newVersion: updated.version,
+      previousStage: from,
+      newStage: to,
+    });
+    if (isTerminal(to)) {
       const open = await this.deps.store.listFollowUps({ statuses: ["suggested", "scheduled"], limit: 1000 });
       for (const f of open.filter((x) => x.leadId === lead.id)) {
         await this.deps.store.saveFollowUp({ ...f, status: "dismissed", decidedBy: by, decidedAt: this.nowIso() });

@@ -9,6 +9,7 @@ import type { AgentRuntime } from "../runtime";
 import type { QualityController } from "../quality/controller";
 import { decideGate } from "./gate";
 import { validateAnswerSources } from "../factual/validate";
+import type { ReviewOpenInput } from "../review/service";
 import type { CollaborationStore } from "./store";
 import { assertNoPersonalData, PersonalDataError } from "../security/personal-data";
 
@@ -64,6 +65,8 @@ export class ExchangeError extends Error {
 }
 
 export interface ExchangeDeps {
+  /** Opens an owner review item for a held answer. Optional: without it, held answers are only audited. */
+  review?: { open(input: ReviewOpenInput): Promise<unknown> };
   /** Owner-approved source hosts. An answer is delivered automatically only when its sources are on this list. */
   approvedHosts?: () => string[];
   bus: EventBus;
@@ -180,6 +183,20 @@ export class CommunicationService {
     await this.audit(actor, "agent.answer_reviewed", input.questionId, { status: gate.status, decision: gate.consensus.decision, reasons: gate.consensus.reasons });
     if (gate.status !== "PASSED") {
       await this.audit(actor, "agent.answer_held", input.questionId, { runId: input.runId, status: gate.status });
+      if (this.deps.review) {
+        // The answer waits in the approval center with its sources and the reasons it was held.
+        await this.deps.review.open({
+          kind: "held_answer",
+          agent: item.toAgent,
+          runId: input.runId,
+          taskId: null,
+          leadId: null,
+          subjectRef: input.questionId,
+          summary: `Answer from ${item.toAgent} to ${item.fromAgent} is held: ${gate.consensus.reasons.join(", ") || gate.status}.`,
+          evidence: { gateStatus: gate.status, codes: gate.consensus.reasons, sources: cited },
+          payload: { runId: input.runId, questionId: input.questionId, fromAgent: item.toAgent, toAgent: item.fromAgent, answer: (output as { answer: string }).answer, question: item.question },
+        } as ReviewOpenInput);
+      }
       return { status: "held" };
     }
 
@@ -195,6 +212,25 @@ export class CommunicationService {
     });
     await this.audit(actor, "agent.answer_delivered", input.questionId, { runId: input.runId, fromAgent: item.toAgent, toAgent: item.fromAgent });
     return { status: "delivered" };
+  }
+
+  /**
+   * Delivers an answer the owner approved from the approval center. The owner decides; the platform only publishes the
+   * answer to its asker, one hop, as the answering agent. Nothing leaves the platform.
+   */
+  async deliverApproved(actor: Actor, p: { runId: string; questionId: string; fromAgent: AgentKey; toAgent: AgentKey; answer: string }): Promise<{ eventId: string }> {
+    if (actor.kind !== "owner") throw new ExchangeError("Only the owner can deliver an approved answer.", "forbidden");
+    const published = await this.deps.bus.publish({
+      type: "agent.answer",
+      producer: p.fromAgent,
+      target: p.toAgent,
+      payload: { fromAgent: p.fromAgent, toAgent: p.toAgent, questionId: p.questionId, runId: p.runId, answer: p.answer },
+      idempotencyKey: `agent.answer:${p.questionId}`,
+      correlationId: p.runId,
+      hopCount: 2,
+    });
+    await this.audit(actor, "agent.answer_approved_delivered", p.questionId, { runId: p.runId, fromAgent: p.fromAgent, toAgent: p.toAgent });
+    return { eventId: published.eventId };
   }
 
   /** The questions asked in a run and the answers delivered so far. Text is included: this is the owner's view. */

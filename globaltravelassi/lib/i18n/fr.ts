@@ -366,6 +366,8 @@ export const fr: Dict = {
       kinds: { task_failed: "Tâche en échec", scheduler_unhealthy: "Travail en retard", scheduler_missing: "Planificateur inactif", agent_summary: "Résumé des agents", owner_report: "Rapport du propriétaire", sales_report: "Rapport commercial", marketing_report: "Rapport marketing", customer_alerts: "Alertes clients", strategy_recommendations: "Recommandations" },
     },
     crmUi: {
+      errorStale: "Ce prospect a changé après l'ouverture de l'écran. Rechargez et réessayez.",
+      pendingOwner: "Ce passage exige l'approbation du propriétaire. Il attend dans le centre d'approbation.",
       nav: "CRM",
       hint: "Prospects, étapes du pipeline, interactions et relances. Les scores reposent sur des règles : chaque point affiche sa raison. Rien n'est envoyé à un client depuis ici. Les relances attendent votre décision.",
       unauthorized: "Connectez-vous en tant que propriétaire pour utiliser le CRM.",

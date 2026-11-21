@@ -364,6 +364,8 @@ export const en = {
       kinds: { task_failed: "Task failed", scheduler_unhealthy: "Overdue work", scheduler_missing: "Scheduler not running", agent_summary: "Agent summary", owner_report: "Owner report", sales_report: "Sales report", marketing_report: "Marketing report", customer_alerts: "Customer alerts", strategy_recommendations: "Recommendations" },
     },
     crmUi: {
+      errorStale: "This lead changed after you opened it. Reload and try again.",
+      pendingOwner: "This move needs the owner's approval. It is waiting in the approval center.",
       nav: "CRM",
       hint: "Leads, pipeline stages, interactions and follow-ups. Scores are rule-based: each point shows its reason. Nothing is sent to a customer from here. Follow-ups wait for your decision.",
       unauthorized: "Sign in as the owner to use the CRM.",

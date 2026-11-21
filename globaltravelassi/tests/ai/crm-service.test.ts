@@ -1,10 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { CrmService, CrmForbiddenError, CrmRuleError, CrmValidationError, type LeadRecord } from "@/lib/ai/crm/service";
+import { CrmService, CrmForbiddenError, CrmRuleError, CrmValidationError, CrmRequiresApprovalError, type LeadRecord } from "@/lib/ai/crm/service";
 import { MemoryCrmStore } from "@/lib/ai/crm/memory-store";
 import { MemoryAuditSink } from "@/lib/ai/audit";
 import { makeClock, makeIds, OWNER } from "./helpers";
 
 const OWNER_ACTOR = OWNER;
+
+/** Reads the lead's current version and moves it, as the owner's screen does. */
+async function move(svc: CrmService, actor: typeof OWNER, leadId: string, to: string, reason: string | null) {
+  const { lead } = await svc.view(actor, leadId);
+  return svc.changeStage(actor, leadId, { to, reason, expectedVersion: lead.version });
+}
 const AGENT = { kind: "agent" as const, agent: "CRMAgent" as const };
 const SYSTEM = { kind: "system" as const };
 const T = "2026-11-21T09:00:00.000Z";
@@ -13,7 +19,7 @@ function setup() {
   const clock = makeClock(T);
   const audit = new MemoryAuditSink();
   const store = new MemoryCrmStore();
-  const svc = new CrmService({ store, audit, now: clock.now, newId: makeIds("crm") });
+  const svc = new CrmService({ store, audit, now: clock.now, newId: makeIds("crm"), requestApproval: async () => "review-stub" });
   return { svc, store, audit, clock };
 }
 
@@ -61,8 +67,8 @@ describe("leads and stages", () => {
   it("moves a lead along a valid path and records each move", async () => {
     const { svc, store } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "contacted", reason: null });
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "qualified", reason: null });
+    await move(svc, OWNER_ACTOR, lead.id, "contacted", null);
+    await move(svc, OWNER_ACTOR, lead.id, "qualified", null);
     const view = await svc.view(OWNER_ACTOR, lead.id);
     expect(view.lead.stage).toBe("qualified");
     expect(view.history.map((h) => `${h.fromStage}>${h.toStage}`)).toEqual(["contacted>qualified", "new>contacted"]);
@@ -72,7 +78,7 @@ describe("leads and stages", () => {
   it("refuses a move the pipeline does not allow, and writes nothing", async () => {
     const { svc, store } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
-    await expect(svc.changeStage(OWNER_ACTOR, lead.id, { to: "converted", reason: null })).rejects.toBeInstanceOf(CrmRuleError);
+    await expect(move(svc, OWNER_ACTOR, lead.id, "converted", null)).rejects.toBeInstanceOf(CrmRuleError);
     expect((await store.getLead(lead.id))?.stage).toBe("new");
     expect(await store.listHistory([lead.id])).toHaveLength(0);
   });
@@ -80,18 +86,18 @@ describe("leads and stages", () => {
   it("requires a reason to mark a lead lost", async () => {
     const { svc } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
-    await expect(svc.changeStage(OWNER_ACTOR, lead.id, { to: "lost", reason: null })).rejects.toBeInstanceOf(CrmValidationError);
-    const lost = await svc.changeStage(OWNER_ACTOR, lead.id, { to: "lost", reason: "Booked with another agency" });
+    await expect(move(svc, OWNER_ACTOR, lead.id, "lost", null)).rejects.toBeInstanceOf(CrmValidationError);
+    const lost = await move(svc, OWNER_ACTOR, lead.id, "lost", "Booked with another agency");
     expect(lost.stageReason).toBe("Booked with another agency");
   });
 
-  it("can reopen a lost lead to new but not to any other stage", async () => {
+  it("reopening a lost lead is exceptional: it waits for the owner's approval rather than applying", async () => {
     const { svc } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "lost", reason: "No reply after two weeks" });
-    await expect(svc.changeStage(OWNER_ACTOR, lead.id, { to: "qualified", reason: null })).rejects.toBeInstanceOf(CrmRuleError);
-    const reopened = await svc.changeStage(OWNER_ACTOR, lead.id, { to: "new", reason: null });
-    expect(reopened.stage).toBe("new");
+    await move(svc, OWNER_ACTOR, lead.id, "lost", "No reply after two weeks");
+    await expect(move(svc, OWNER_ACTOR, lead.id, "qualified", null)).rejects.toBeInstanceOf(CrmRuleError);
+    await expect(move(svc, OWNER_ACTOR, lead.id, "new", null)).rejects.toBeInstanceOf(CrmRequiresApprovalError);
+    expect((await svc.view(OWNER_ACTOR, lead.id)).lead.stage).toBe("lost");
   });
 
   it("refuses personal data in free text", async () => {
@@ -112,7 +118,7 @@ describe("leads and stages", () => {
     const { svc, store } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
     const archived: LeadRecord = { ...(await store.getLead(lead.id))!, archivedAt: T };
-    await store.saveLead(archived, OWNER.id);
+    await store.saveLead(archived, OWNER.id, archived.version);
     await expect(svc.addInteraction(OWNER_ACTOR, lead.id, { kind: "note", summary: "Still interested" })).rejects.toBeInstanceOf(CrmRuleError);
   });
 });
@@ -161,8 +167,8 @@ describe("follow-ups", () => {
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
     clock.advance(3 * 86_400_000);
     await svc.proposeFollowUps(OWNER_ACTOR);
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "contacted", reason: null });
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "lost", reason: "Not travelling this year" });
+    await move(svc, OWNER_ACTOR, lead.id, "contacted", null);
+    await move(svc, OWNER_ACTOR, lead.id, "lost", "Not travelling this year");
     const view = await svc.view(OWNER_ACTOR, lead.id);
     expect(view.followUps.map((f) => f.status)).toEqual(["dismissed"]);
   });
@@ -170,7 +176,7 @@ describe("follow-ups", () => {
   it("does not propose follow-ups for terminal leads", async () => {
     const { svc, clock } = setup();
     const lead = await svc.createLead(OWNER_ACTOR, leadInput());
-    await svc.changeStage(OWNER_ACTOR, lead.id, { to: "lost", reason: "Changed their mind" });
+    await move(svc, OWNER_ACTOR, lead.id, "lost", "Changed their mind");
     clock.advance(10 * 86_400_000);
     expect(await svc.proposeFollowUps(OWNER_ACTOR)).toBe(0);
   });
@@ -181,10 +187,10 @@ describe("sales funnel", () => {
     const { svc } = setup();
     const a = await svc.createLead(OWNER_ACTOR, leadInput());
     const b = await svc.createLead(OWNER_ACTOR, leadInput({ label: "Second enquiry" }));
-    await svc.changeStage(OWNER_ACTOR, a.id, { to: "contacted", reason: null });
-    await svc.changeStage(OWNER_ACTOR, a.id, { to: "qualified", reason: null });
-    await svc.changeStage(OWNER_ACTOR, a.id, { to: "converted", reason: null });
-    await svc.changeStage(OWNER_ACTOR, b.id, { to: "lost", reason: "No budget" });
+    await move(svc, OWNER_ACTOR, a.id, "contacted", null);
+    await move(svc, OWNER_ACTOR, a.id, "qualified", null);
+    await move(svc, OWNER_ACTOR, a.id, "converted", null);
+    await move(svc, OWNER_ACTOR, b.id, "lost", "No budget");
     const f = await svc.funnel(OWNER_ACTOR);
     expect(f.conversionRate).toBe(50);
     expect(f.rows.find((r) => r.stage === "qualified")?.reached).toBe(1);

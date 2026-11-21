@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CrmStore, FollowUpRecord, InteractionRow, LeadRecord, StageHistoryRow } from "./service";
+import { CrmStaleError, type CrmStore, type FollowUpRecord, type InteractionRow, type LeadRecord, type StageHistoryRow } from "./service";
 import type { FollowUpStatus, LeadSource, LeadStage, Interest, InteractionKind, FollowUpPriority } from "./rules";
 
 type Row = Record<string, unknown>;
@@ -10,6 +10,7 @@ function fail(error: { message: string }): never {
 
 const leadFromRow = (r: Row): LeadRecord => ({
   id: r.id as string,
+  version: Number(r.version ?? 1),
   label: r.label as string,
   source: r.source as LeadSource,
   applicationId: (r.application_id as string | null) ?? null,
@@ -85,10 +86,17 @@ export class SupabaseCrmStore implements CrmStore {
     return ((data ?? []) as Row[]).map(leadFromRow);
   }
 
-  /** The stage history row is written by the database guard in the same statement, so `changedBy` is not needed here. */
-  async saveLead(l: LeadRecord): Promise<void> {
-    const { error } = await this.db.from("ai_leads").update(leadToRow(l)).eq("id", l.id);
+  /**
+   * The stage history row is written by the database guard in the same statement. The version is bumped by the database;
+   * the write matches only while the stored version is still the one the caller read.
+   */
+  async saveLead(l: LeadRecord, _changedBy: string, expectedVersion: number): Promise<void> {
+    const { id: _id, version: _v, ...payload } = leadToRow(l) as Record<string, unknown> & { id: string };
+    void _id;
+    void _v;
+    const { data, error } = await this.db.from("ai_leads").update(payload).eq("id", l.id).eq("version", expectedVersion).select("id");
     if (error) fail(error);
+    if ((data ?? []).length !== 1) throw new CrmStaleError();
   }
 
   async listHistory(leadIds: string[]): Promise<StageHistoryRow[]> {

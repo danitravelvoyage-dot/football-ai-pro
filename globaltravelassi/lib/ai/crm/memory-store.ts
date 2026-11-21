@@ -1,4 +1,4 @@
-import type { CrmStore, FollowUpRecord, InteractionRow, LeadRecord, StageHistoryRow } from "./service";
+import { CrmStaleError, type CrmStore, type FollowUpRecord, type InteractionRow, type LeadRecord, type StageHistoryRow } from "./service";
 import { canMoveStage, type LeadStage } from "./rules";
 
 /**
@@ -34,9 +34,11 @@ export class MemoryCrmStore implements CrmStore {
     return [...this.leads.values()].filter((l) => l.archivedAt === null).slice(0, limit).map((l) => ({ ...l }));
   }
 
-  async saveLead(l: LeadRecord, changedBy: string): Promise<void> {
+  async saveLead(l: LeadRecord, changedBy: string, expectedVersion: number): Promise<void> {
     const prev = this.leads.get(l.id);
     if (!prev) throw new Error("Lead not found.");
+    // Compare-and-set: a write that read an older version of the lead loses, as it does in the database.
+    if (prev.version !== expectedVersion) throw new CrmStaleError();
     if (prev.stage !== l.stage) {
       if (!canMoveStage(prev.stage, l.stage)) throw new Error("Lead stage move is not allowed.");
       if (l.stage === "lost" && (l.stageReason ?? "").length < 3) throw new Error("A lost lead needs a reason.");
@@ -50,7 +52,7 @@ export class MemoryCrmStore implements CrmStore {
         changedAt: l.updatedAt,
       });
     }
-    this.leads.set(l.id, { ...l });
+    this.leads.set(l.id, { ...l, version: prev.version + 1 });
   }
 
   async listHistory(leadIds: string[]): Promise<StageHistoryRow[]> {

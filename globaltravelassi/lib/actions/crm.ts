@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createAiServices } from "@/lib/ai/services";
-import { CrmForbiddenError, CrmRuleError, CrmValidationError } from "@/lib/ai/crm/service";
+import { CrmForbiddenError, CrmRuleError, CrmRequiresApprovalError, CrmStaleError, CrmValidationError } from "@/lib/ai/crm/service";
 import { ownerId } from "./ai";
 import { formObject, localeFrom } from "./helpers";
 import type { ActionState } from "./types";
 import { z } from "zod";
 
 function failure(error: unknown): ActionState {
+  if (error instanceof CrmStaleError) return { ok: false, code: "stale" };
   if (error instanceof CrmForbiddenError) return { ok: false, code: "forbidden" };
   if (error instanceof CrmValidationError) return { ok: false, code: "invalid_input" };
   if (error instanceof CrmRuleError) return { ok: false, code: "rule_refused" };
@@ -52,13 +53,19 @@ export async function changeLeadStageAction(formData: FormData): Promise<ActionS
   if (!owner) return { ok: false, code: "unauthorized" };
   const f = formObject(formData);
   const id = idSchema.safeParse(f.id);
-  if (!id.success) return { ok: false, code: "invalid_input" };
+  const expectedVersion = Number(f.expectedVersion);
+  if (!id.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) return { ok: false, code: "invalid_input" };
   try {
     const services = await createAiServices();
-    await services.crm.changeStage({ kind: "owner", id: owner }, id.data, { to: f.to ?? "", reason: f.reason ? f.reason : null });
+    const result = await services.crm.requestStageChange({ kind: "owner", id: owner }, id.data, {
+      to: f.to ?? "",
+      reason: f.reason ? f.reason : null,
+      expectedVersion,
+    });
     refresh(locale);
-    return { ok: true, code: "saved" };
+    return result.status === "applied" ? { ok: true, code: "saved" } : { ok: true, code: "pending_owner", id: result.reviewId };
   } catch (error) {
+    if (error instanceof CrmRequiresApprovalError) return { ok: true, code: "pending_owner", id: error.reviewId };
     return failure(error);
   }
 }

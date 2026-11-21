@@ -43,6 +43,9 @@ import { StageAnswerService } from "./factual/stage-answer";
 import { SupabaseCollaborationStore } from "./collaboration/supabase-store";
 import { CollaborationService } from "./collaboration/service";
 import { CommunicationService } from "./collaboration/communication";
+import { ReviewService, type ReviewOpenInput } from "./review/service";
+import { SupabaseReviewStore } from "./review/supabase-store";
+import { createReviewCenter } from "./review/center";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -80,6 +83,7 @@ export interface AiServices {
   businessReports: BusinessReportService;
   collaboration: CollaborationService;
   communication: CommunicationService;
+  review: ReviewService;
   stageAnswers: StageAnswerService;
   audit: AuditSink;
   usage: UsageStore;
@@ -185,13 +189,53 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
       return out;
     },
   });
-  const crm = new CrmService({ store: new SupabaseCrmStore(db), audit, now, newId });
+  // The review center is built last, but CRM and communication open items in it. They reach it through this reference.
+  let reviewCenter: ReviewService | null = null;
+  const openReview = (input: ReviewOpenInput) => {
+    if (!reviewCenter) throw new Error("The approval center is not ready.");
+    return reviewCenter.open(input);
+  };
+  const crm = new CrmService({
+    store: new SupabaseCrmStore(db),
+    audit,
+    now,
+    newId,
+    // A move that needs the owner's approval becomes a review item. The move is applied only when the owner approves it.
+    requestApproval: async (r) => {
+      const item = await openReview({
+        kind: "crm_transition",
+        agent: null,
+        runId: null,
+        taskId: null,
+        leadId: r.leadId,
+        subjectRef: r.leadId,
+        summary: `Lead stage move from ${r.from} to ${r.to} needs your approval.`,
+        evidence: { from: r.from, to: r.to, expectedVersion: r.expectedVersion },
+        payload: { leadId: r.leadId, from: r.from, to: r.to, expectedVersion: r.expectedVersion, reason: r.reason, requestedBy: r.requestedBy },
+      });
+      return item.id;
+    },
+  });
   const competitors = new CompetitorService({ store: new SupabaseCompetitorStore(db), fetch: ((url, init) => fetch(url, init)) as HttpFetch, audit, now, newId });
   const collaboration = new CollaborationService({ store: collaborationStore, audit, now, newId });
-  const communication = new CommunicationService({ approvedHosts: () => visaHosts, bus: platform.events, events: eventStore, runtime, quality: platform.quality, collaboration: collaborationStore, audit, now, newId });
+  const communication = new CommunicationService({
+    approvedHosts: () => visaHosts,
+    bus: platform.events,
+    events: eventStore,
+    runtime,
+    quality: platform.quality,
+    collaboration: collaborationStore,
+    audit,
+    now,
+    newId,
+    // A held answer waits in the approval center with its evidence.
+    review: { open: (input) => openReview(input) },
+  });
+  const review = createReviewCenter({ store: new SupabaseReviewStore(db), audit, now, newId, crm, communication });
+  reviewCenter = review;
   const stageAnswers = new StageAnswerService({ runtime, crm, audit, now, newId });
   const businessReports = new BusinessReportService({ crm, campaigns, competitors, notify: (n) => notifications.notify(n), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, stageAnswers, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, review, stageAnswers, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {

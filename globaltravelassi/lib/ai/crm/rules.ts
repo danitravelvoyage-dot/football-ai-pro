@@ -25,6 +25,19 @@ export function canMoveStage(from: LeadStage, to: LeadStage): boolean {
   return from !== to && MOVES[from].includes(to);
 }
 
+/**
+ * Exceptional moves go backwards or reopen a lead. They are allowed only after the owner approves them. Every other
+ * allowed move is standard and needs no further approval. Anything not in MOVES is forbidden.
+ */
+const EXCEPTIONAL: ReadonlySet<string> = new Set(["qualified>interested", "interested>qualified", "lost>new"]);
+
+export type TransitionKind = "standard" | "exceptional" | "forbidden";
+
+export function transitionKind(from: LeadStage, to: LeadStage): TransitionKind {
+  if (!canMoveStage(from, to)) return "forbidden";
+  return EXCEPTIONAL.has(`${from}>${to}`) ? "exceptional" : "standard";
+}
+
 export function isTerminal(stage: LeadStage): boolean {
   return stage === "converted" || stage === "lost";
 }
@@ -72,6 +85,8 @@ export const stageChangeSchema = z
   .object({
     to: z.enum(LEAD_STAGES),
     reason: z.string().trim().max(MAX_STAGE_REASON).nullable(),
+    /** The lead version the caller read. A change against an older version is refused. */
+    expectedVersion: z.number().int().min(1),
   })
   .superRefine((v, ctx) => {
     if (v.to === "lost" && (!v.reason || v.reason.length < 3)) ctx.addIssue({ code: "custom", path: ["reason"], message: "Write why the lead is lost." });

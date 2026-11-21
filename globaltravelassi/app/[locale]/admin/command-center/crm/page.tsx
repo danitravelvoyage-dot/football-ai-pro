@@ -39,7 +39,7 @@ export default async function CrmPage({ params, searchParams }: { params: Promis
   if (state.status === "unauthorized") return <p className="text-sm text-rose-800">{c.unauthorized}</p>;
   if (state.status !== "ok") return <LoadState kind={state.status} dict={dict} />;
 
-  const messages = { ...formMessages(dict), saved: c.saved, forbidden: c.errorForbidden, invalid_input: c.errorInvalid, rule_refused: c.errorRule, unauthorized: c.errorUnauthorized, generic: c.errorGeneric };
+  const messages = { ...formMessages(dict), saved: c.saved, forbidden: c.errorForbidden, invalid_input: c.errorInvalid, rule_refused: c.errorRule, unauthorized: c.errorUnauthorized, generic: c.errorGeneric, stale: c.errorStale, pending_owner: c.pendingOwner };
   const sel = state.selected;
   const money = (n: number | null) => (n === null ? "—" : `${n}%`);
   const reasonText = (code: string) => (c.reasonLabels as Record<string, string>)[code] ?? code;
@@ -146,6 +146,7 @@ export default async function CrmPage({ params, searchParams }: { params: Promis
                   <ActionForm key={to} action={changeLeadStageAction} messages={messages} submitLabel={`${c.moveTo} ${c.stageLabels[to]}`} pendingLabel={dict.common.loading} submitVariant="navy" className={to === "lost" ? "w-full" : undefined}>
                     <input type="hidden" name="id" value={sel.lead.id} />
                     <input type="hidden" name="to" value={to} />
+                    <input type="hidden" name="expectedVersion" value={sel.lead.version} />
                     {to === "lost" ? <TextField name="reason" label={c.reason} required maxLength={300} /> : null}
                   </ActionForm>
                 ))}
