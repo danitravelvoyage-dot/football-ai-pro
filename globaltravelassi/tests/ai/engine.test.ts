@@ -1,3 +1,4 @@
+import { MemoryCollaborationStore } from "@/lib/ai/collaboration/store";
 import { describe, it, expect } from "vitest";
 import { ForbiddenActorError } from "@/lib/ai/approvals";
 import { Orchestrator } from "@/lib/ai/orchestration/engine";
@@ -10,7 +11,7 @@ import { ApprovalService } from "@/lib/ai/approvals";
 import { MemoryAuditSink } from "@/lib/ai/audit";
 import { silentLogger } from "@/lib/ai/logging";
 import { MemoryTaskStore } from "@/lib/ai/orchestration/store";
-import { makeClock, makeHarness, makeIds, OWNER, AGENT, ScriptedProvider, agentNameIn, startInput } from "./helpers";
+import { makeClock, makeHarness, makeIds, OWNER, AGENT, ScriptedProvider, agentNameIn, startInput, clearQualityHolds } from "./helpers";
 import type { TaskStatus } from "@/lib/ai/types";
 import { MemoryEventStore } from "@/lib/ai/events/store";
 import { buildPlatform } from "@/lib/ai/platform";
@@ -60,23 +61,36 @@ describe("workflow start and idempotency", () => {
 });
 
 describe("marketing workflow end to end (mock provider)", () => {
-  it("runs in dependency order and stops at the owner approval gate", async () => {
+  it("runs in dependency order and stops first at the owner's review of the compliance output", async () => {
     const h = makeHarness();
     const { runId } = await h.orch.startWorkflow(startInput());
     await drive(h.orch);
     const s = await statusOf(h.store, runId);
     expect(s.research).toBe("succeeded");
+    // Compliance outputs always go to the owner: the compliance agent has no independent second reviewer.
+    expect(s.compliance).toBe("waiting_approval");
+    expect(s.approval).toBe("pending");
+    const pending = await h.store.listApprovals("pending");
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.actionClass).toBe("propose_change");
+    expect(pending[0]?.summary).toContain("Human review needed");
+  });
+
+  it("after the owner reviews the compliance output, the run reaches the publishing approval gate", async () => {
+    const h = makeHarness();
+    const { runId } = await h.orch.startWorkflow(startInput());
+    await clearQualityHolds(h);
+    const s = await statusOf(h.store, runId);
     expect(s.compliance).toBe("succeeded");
     expect(s.approval).toBe("waiting_approval");
     const pending = await h.store.listApprovals("pending");
-    expect(pending).toHaveLength(1);
-    expect(pending[0]?.actionClass).toBe("external_publish");
+    expect(pending.map((a) => a.actionClass)).toEqual(["external_publish"]);
   });
 
   it("the owner approves: the item becomes an owner action card, never an execution", async () => {
     const h = makeHarness();
     const { runId } = await h.orch.startWorkflow(startInput());
-    await drive(h.orch);
+    await clearQualityHolds(h);
     const [approval] = await h.store.listApprovals("pending");
     await h.orch.decideApproval(approval!.id, "approved", OWNER, "Looks good.");
 
@@ -93,7 +107,7 @@ describe("marketing workflow end to end (mock provider)", () => {
   it("the owner rejects: the approval task is cancelled and every decision is logged", async () => {
     const h = makeHarness();
     const { runId } = await h.orch.startWorkflow(startInput());
-    await drive(h.orch);
+    await clearQualityHolds(h);
     const [approval] = await h.store.listApprovals("pending");
     await h.orch.decideApproval(approval!.id, "rejected", OWNER, "Not now.");
     expect((await statusOf(h.store, runId)).approval).toBe("cancelled");
@@ -123,8 +137,9 @@ describe("failure handling", () => {
   it("a rejected sales approval keeps the follow-up blocked", async () => {
     const h = makeHarness();
     const { runId } = await h.orch.startWorkflow(startInput({ workflowKey: "sales", idempotencyKey: "sales-key-0001" }));
-    await drive(h.orch);
+    await clearQualityHolds(h);
     const [approval] = await h.store.listApprovals("pending");
+    expect(approval?.actionClass).toBe("external_send_message");
     await h.orch.decideApproval(approval!.id, "rejected", OWNER, null);
     await drive(h.orch);
     const s = await statusOf(h.store, runId);
@@ -233,6 +248,7 @@ describe("state survives across sessions", () => {
         context: platform.context,
         knowledge: platform.knowledge,
         quality: platform.quality,
+        collaboration: new MemoryCollaborationStore(),
       });
     };
     const first = build();
@@ -242,7 +258,9 @@ describe("state survives across sessions", () => {
     const second = build();
     await drive(second);
     const s = await statusOf(store, runId);
-    expect(s.approval).toBe("waiting_approval");
+    // The second instance carried the run to the first human decision: the owner's review of the compliance output.
+    expect(s.research).toBe("succeeded");
+    expect(s.compliance).toBe("waiting_approval");
   });
 });
 

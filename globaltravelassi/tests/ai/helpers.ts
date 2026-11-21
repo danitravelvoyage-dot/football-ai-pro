@@ -14,6 +14,7 @@ import { buildPlatform } from "@/lib/ai/platform";
 import { MemoryContextStore } from "@/lib/ai/context/store";
 import { MemoryKbStore } from "@/lib/ai/knowledge/store";
 import { MemoryQualityStore } from "@/lib/ai/quality/store";
+import { MemoryCollaborationStore } from "@/lib/ai/collaboration/store";
 
 export function makeClock(startIso = "2026-11-20T09:00:00.000Z") {
   let t = new Date(startIso).getTime();
@@ -90,6 +91,7 @@ export function makeHarness(options: {
     { tasks: store, events: eventStore, context: new MemoryContextStore(), knowledge: new MemoryKbStore(), quality: new MemoryQualityStore(), audit },
     { now: clock.now, newId: ids },
   );
+  const collab = new MemoryCollaborationStore();
   const orch = new Orchestrator({
     store,
     runtime,
@@ -105,8 +107,9 @@ export function makeHarness(options: {
     quality: platform.quality,
     briefing: options.briefing,
     notify: options.notify,
+    collaboration: collab,
   });
-  return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge, quality: platform.quality };
+  return { clock, store, audit, ids, usage, gateway, runtime, approvals, orch, collab, events: platform.events, eventStore, context: platform.context, knowledge: platform.knowledge, quality: platform.quality };
 }
 
 export const OWNER = { kind: "owner" as const, id: "owner-1" };
@@ -128,3 +131,19 @@ export function startInput(overrides: Partial<Parameters<Orchestrator["startWork
 }
 
 export { ProviderError };
+
+/**
+ * Drives a harness and lets the owner approve each output the quality gate holds for review, until nothing is held.
+ * Compliance outputs are always held for the owner (see decideGate), so runs that reach the publishing step need this.
+ */
+export async function clearQualityHolds(h: ReturnType<typeof makeHarness>): Promise<void> {
+  for (let round = 0; round < 10; round++) {
+    for (let i = 0; i < 40; i++) {
+      const report = await h.orch.tick({ limit: 10 });
+      if (report.claimed === 0) break;
+    }
+    const holds = (await h.store.listApprovals("pending")).filter((a) => a.actionClass === "propose_change");
+    if (holds.length === 0) return;
+    for (const hold of holds) await h.orch.decideApproval(hold.id, "approved", OWNER, "Reviewed by the owner.");
+  }
+}

@@ -1,15 +1,16 @@
 # GLOBALTRAVELASSI: project status and audit
 
-Status date: 2026-11-21 (session 8). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
-No migration has been applied to any database (0002 to 0016 are all unapplied). No migration was added in session 8.
+Status date: 2026-11-21 (session 9). Branch: `feature/ai-marketing-command-center`. Local only. Nothing has been pushed or deployed.
+No migration has been applied to any database (0002 to 0017 are all unapplied). Migration 0017 was added in session 9.
 
-## Verification (session 8, multi-agent intelligence)
+## Verification (session 9, multi-agent autonomy)
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | passes, no warnings |
 | `npm run typecheck` | passes |
-| `npm test` (vitest) | 58 files, 778 tests, all passing (741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm test` (vitest) | 62 files, 838 tests, all passing (778 at session 8, 741 at session 7, 728 at session 6, 669 at session 5, 616 at session 4) |
+| `npm run verify` | passes: lint, typecheck, unit and integration tests, production build (includes `/[locale]/admin/command-center/conflicts`) |
 | Browser smoke (`npm run test:browser`, Chromium on the production build) | 13 of 13 checks pass: trigger refusals, public pages in en/fr/ar with correct direction and no page errors, sign-in redirect for private pages, no horizontal scroll at 375 px |
 | `npm run build` | passes; `/api/ai/scheduler`, `/[locale]/admin/command-center/scheduler` and `/[locale]/admin/command-center/crm` compile |
 | Live probe of the trigger on a production server | 401 with no or wrong bearer, 503 `not_configured` with the correct bearer and no worker credentials, 405 on GET, login redirect for the admin page when signed out |
@@ -163,6 +164,58 @@ Findings and status:
 - **Store-level tests for the Supabase CRM store:** the store's SQL is covered by the PGlite tests, but its TypeScript paths are only type-checked.
 - **Stage change and history write in one application call:** the database trigger makes them atomic. The memory store mirrors this, but the trigger itself is tested on PGlite only.
 - **Rendered browser check of the CRM page:** not done.
+
+## Session 9 additions (multi-agent autonomy)
+
+This section supersedes the session 8 notes that said the consensus, panel, routing and conflicts were not wired.
+
+**1. Quality gate (wired into the engine).**
+- Every agent output gets two votes: the quality controller and a compliance lens (policy and brand checks, deterministic code, not a model). The producing agent never counts as its own reviewer.
+- Fewer than two independent votes escalates to the owner. A compliance agent's own output has no second reviewer, so it always goes to the owner. Compliance outputs therefore require owner approval.
+- A blocking or critical compliance violation is a rejection, and the compliance lens has veto power.
+- Disagreement (one reviewer approves, another rejects) escalates to the owner.
+- Decisions are recorded in `ai_review_panels` with the votes, exclusions and reasons (codes only). The stored quality review carries the final status, so history and action agree.
+
+**2. Routing (wired into `startWorkflow`).**
+- Routable steps (research, strategy, drafting, scripts, creative brief, sales qualification, CRM hygiene, visa research, analytics) go to the least-loaded qualified agent. Load counts open tasks and the choices already made in the run. On a tie, the template's agent wins.
+- Pinned, never routed: approvals, customer messages, publishing, compliance reviews, deterministic steps, and anything with a protected capability (publishing, customer support, website operations, payments).
+- Each decision is written to `ai_routing_decisions` and audited, with its reasons.
+- Known effect: a routable step can now move to another agent that holds the same capability (for example, a sales qualification step may go to the CRM agent). This is the intended behaviour of least-loaded routing; it is noted here so it is not a surprise.
+
+**3. Conflicts (persisted, owner dashboard, audited resolution).**
+- Migration 0017 (not applied): `ai_conflicts`, one per run and subject. The operator (scheduler) may record conflicts. Only the owner may resolve them, once. A database trigger refuses any other change, and the column grant limits updates to the resolution fields.
+- Owner page `/admin/command-center/conflicts`: pending holds with a link to Approvals, open conflicts with a resolution form, resolved conflicts, reviewer decisions, and routing decisions.
+- Resolution is audited with the resolver, the time and the number of agents, never the resolution text.
+
+**4. Agent questions and answers (event-based).**
+- New event types `agent.question` (one hop) and `agent.answer` (second hop). The bus refuses a question or answer whose producer is not the named agent, or whose hop count is wrong.
+- An answer is produced by running the answering agent through the runtime, then reviewed by the same gate as any output. Only a passing answer is delivered. Answers are audited, not stored as quality reviews, because the review table is keyed by task.
+- No handler publishes in response to a question or answer, so an exchange cannot start another one. Each question is asked once, and a question is answered once. At most five questions per run.
+- The owner asks an agent from the tasks page, and the exchange shows under the run.
+
+**5. Owner control.**
+- Cancel the tasks of a run that have not started, from the tasks page, with confirmation. Running tasks and tasks waiting for approval are left and reported.
+- The conflicts page shows pending holds, open and resolved conflicts, reviewer decisions and routing decisions.
+
+**6. Zero-cost rules.** No real model was called. The mock provider is off unless `AI_MOCK_ENABLED=true`. All tests use the mock or a scripted provider. No paid service, no deployment, no push.
+
+**Design decisions taken during implementation (please review).**
+- A revision request is work to do, not a disagreement. An approval met by a revision request sends the output back for revision. Escalation is reserved for approval against rejection, and for reviewers asking for owner review.
+- When the revision limit is reached, the controller's rejection counts as a revision request, not a reviewer's rejection. Schema failures remain real rejections.
+- Every compliance output waits for the owner. For marketing, sales and support runs, the run now stops first at the compliance review. The owner approves that before the publishing or customer-message approval appears. This follows the approved rule, and it adds one owner decision per run.
+
+**Not verified, and why.**
+- **Conflicts raised by the engine are not covered by an end-to-end test.** Claim keys are text-based, so reproducing a conflict through a fixed mock output is fragile. The store, the migration and the resolution are tested, and the detection rule is tested at the quality-check level.
+- **The new pages were not checked in a browser.** They are behind the admin login, which needs a live database.
+- **Migration 0017 has been tested on PGlite only.** It has not been applied to any database.
+- **Answers use the real runtime.** With no model configured, an answer fails honestly and is audited. With a real model configured, the owner's question would run a real call. This was not exercised.
+
+**Still open.**
+- Owner-facing cancellation of a single task (only whole runs are cancellable).
+- Persisted answer reviews (answers are audited, not stored in a table).
+- A review screen for held answers. They appear only in the audit log.
+- Weighted consensus is set in code, not by the owner.
+- Autonomous CEO: not started, as the brief asks.
 
 ## Session 8 additions (multi-agent intelligence)
 

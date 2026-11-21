@@ -8,9 +8,10 @@ import type { Actor } from "../types";
  *  2. One vote per reviewer. A second vote from the same reviewer is excluded.
  *  3. At least `minIndependentReviewers` counted votes are needed. Fewer than that escalates to the owner.
  *  4. A veto reviewer's rejection rejects the output, whatever the others say.
- *  5. When reviewers disagree (one rejects and another approves), the result escalates to the owner. Nothing is
+ *  5. When reviewers disagree (one approves and another rejects), the result escalates to the owner. Nothing is
  *     decided by majority in that case: a disagreement is a finding, not a vote to count.
- *  6. Any request for revision sends the output back for revision. Approval needs every counted vote to approve.
+ *  6. Any request for revision, with no rejection, sends the output back for revision. Approval needs every counted
+ *     vote to approve.
  */
 
 export const VERDICTS = ["approve", "revise", "reject", "escalate"] as const;
@@ -80,6 +81,8 @@ export function reachConsensus(producer: string, votes: Vote[], policy: Consensu
 
   if (counted.some((v) => v.verdict === "escalate")) return finish("escalate_to_owner", ["reviewer_requested_owner"]);
 
+  // Approval against rejection is a disagreement and goes to the owner. A revision request is work to do, not a
+  // disagreement, so an approval met by a revision request sends the output back (see rule 6).
   const approves = counted.some((v) => v.verdict === "approve");
   const rejects = counted.some((v) => v.verdict === "reject");
   if (approves && rejects) return finish("escalate_to_owner", ["reviewers_disagree"]);

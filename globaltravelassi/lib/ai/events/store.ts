@@ -157,5 +157,7 @@ export function seedDefaultSubscriptions(store: MemoryEventStore, agents: readon
   for (const agent of agents) {
     store.setSubscription(agent, "task.ready");
     store.setSubscription(agent, "agent.handoff");
+    store.setSubscription(agent, "agent.question");
+    store.setSubscription(agent, "agent.answer");
   }
 }

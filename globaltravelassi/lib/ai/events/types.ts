@@ -13,6 +13,8 @@ export const EVENT_TYPES = [
   "task.waiting_approval",
   "approval.decided",
   "agent.handoff",
+  "agent.question",
+  "agent.answer",
   "context.updated",
   "kb.entry_changed",
 ] as const;
@@ -45,6 +47,14 @@ export const eventPayloadSchemas = {
     .object({ fromAgent: agent, toAgent: agent, taskId: refId.nullable(), summary: z.string().min(1).max(500) })
     .strict()
     .refine((p) => p.fromAgent !== p.toAgent, { message: "An agent cannot hand off to itself." }),
+  "agent.question": z
+    .object({ fromAgent: agent, toAgent: agent, questionId: refId, runId: refId, question: z.string().min(3).max(500) })
+    .strict()
+    .refine((p) => p.fromAgent !== p.toAgent, { message: "An agent cannot ask itself a question." }),
+  "agent.answer": z
+    .object({ fromAgent: agent, toAgent: agent, questionId: refId, runId: refId, answer: z.string().min(1).max(1000) })
+    .strict()
+    .refine((p) => p.fromAgent !== p.toAgent, { message: "An agent cannot answer itself." }),
   "context.updated": z
     .object({ scope: z.enum(["company", "agent", "workflow"]), scopeKey: z.string().min(1).max(120), contextKey: z.string().min(2).max(80), version: z.number().int().min(1) })
     .strict(),

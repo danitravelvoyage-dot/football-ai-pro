@@ -5,6 +5,10 @@ import { loadCommandCenter } from "@/lib/ai/command-center/load";
 import { groupTasksByRun, progressOf, sortTasks, truncate } from "@/lib/ai/command-center/view";
 import { AGENT_REGISTRY } from "@/lib/ai/registry";
 import { retryTaskAction } from "@/lib/actions/ai";
+import { cancelRunAction, askAgentAction } from "@/lib/actions/collaboration";
+import { loadExchanges } from "@/lib/ai/collaboration/load";
+import { AGENT_KEYS } from "@/lib/ai/types";
+import { SelectField, TextAreaField } from "@/components/forms/Fields";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { formMessages } from "@/lib/validation/messages";
 import { DataTable, Panel } from "@/components/admin/AdminUI";
@@ -23,6 +27,7 @@ export default async function TasksPage({ params }: { params: Promise<{ locale: 
   const state = await loadCommandCenter();
   if (state.status !== "ok") return <LoadState kind={state.status} dict={dict} />;
   const { tasks, runs } = state;
+  const exchanges = await loadExchanges(state.traces.map((trace) => trace.runId));
   const byRun = groupTasksByRun(tasks);
   const titleById = new Map(tasks.map((task) => [task.id, task.title]));
   const queue = sortTasks(tasks);
@@ -100,6 +105,11 @@ export default async function TasksPage({ params }: { params: Promise<{ locale: 
         {state.traces.map((trace) => (
           <div key={trace.runId} className="mb-8 last:mb-0">
             <h3 className="mb-2 font-mono text-xs text-navy-700" dir="ltr">{trace.runId}</h3>
+            <div className="mb-4 flex flex-wrap items-start gap-4">
+              <ActionForm action={cancelRunAction} messages={messages} submitLabel={t.collabUi.cancelRun} pendingLabel={dict.common.loading} submitVariant="navy" confirmMessage={t.collabUi.cancelConfirm}>
+                <input type="hidden" name="runId" value={trace.runId} />
+              </ActionForm>
+            </div>
             <DataTable head={[t.traceStep, t.traceAgent, t.traceStatus, t.traceAttempts, t.traceDepends, t.traceReview]}>
               {trace.steps.map((step) => (
                 <tr key={step.taskId} className="align-top hover:bg-navy-50/50">
@@ -122,6 +132,32 @@ export default async function TasksPage({ params }: { params: Promise<{ locale: 
                 ))}
               </ul>
             )}
+            <p className="mt-3 text-sm font-semibold text-navy-900">{t.collabUi.exchanges}</p>
+            {(exchanges[trace.runId] ?? []).length === 0 ? (
+              <p className="text-sm text-navy-600">{t.collabUi.noExchanges}</p>
+            ) : (
+              <ul className="mt-1 space-y-2 text-sm text-navy-800">
+                {(exchanges[trace.runId] ?? []).map((x) => (
+                  <li key={x.questionId} dir="ltr">
+                    <span className="font-semibold">{x.fromAgent} → {x.toAgent}</span>: {x.question}
+                    <br />
+                    <span className="text-navy-700">{x.answer === null ? t.collabUi.unanswered : `${t.collabUi.answered}: ${x.answer}`}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 rounded-2xl border border-navy-100 p-4">
+              <p className="text-sm font-semibold text-navy-900">{t.collabUi.askTitle}</p>
+              <p className="mb-3 mt-1 text-xs text-navy-600">{t.collabUi.askHint}</p>
+              <ActionForm action={askAgentAction} messages={{ ...messages, rule_refused: t.collabUi.askResult.failed }} submitLabel={t.collabUi.askButton} pendingLabel={dict.common.loading} submitVariant="navy" className="grid gap-4 sm:grid-cols-2">
+                <input type="hidden" name="runId" value={trace.runId} />
+                <SelectField name="fromAgent" label={t.collabUi.fromAgent} required options={AGENT_KEYS.map((a) => ({ value: a, label: a }))} />
+                <SelectField name="toAgent" label={t.collabUi.toAgent} required options={AGENT_KEYS.map((a) => ({ value: a, label: a }))} />
+                <div className="sm:col-span-2">
+                  <TextAreaField name="question" label={t.collabUi.question} required maxLength={500} rows={2} />
+                </div>
+              </ActionForm>
+            </div>
             <p className="mt-3 text-sm font-semibold text-navy-900">{t.traceConflicts}</p>
             {trace.conflicts.length === 0 ? (
               <p className="text-sm text-navy-600">{t.traceNoConflicts}</p>

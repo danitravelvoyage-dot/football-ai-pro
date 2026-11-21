@@ -56,6 +56,8 @@ export function producerRules(type: EventType, producer: string, agentInPayload:
     case "task.waiting_approval":
       return producer === "system" || (agentInPayload !== undefined && producer === agentInPayload);
     case "agent.handoff":
+    case "agent.question":
+    case "agent.answer":
       return true; // checked against fromAgent below
     default:
       return true; // context.updated and kb.entry_changed may come from any known producer
@@ -100,8 +102,16 @@ export function validateEvent(input: PublishInput): ValidatedEvent {
     if (hopCount < 1 || hopCount > MAX_HANDOFF_HOPS) {
       throw new EventValidationError(`Handoff chains are limited to ${MAX_HANDOFF_HOPS} hops.`);
     }
+  } else if (input.type === "agent.question" || input.type === "agent.answer") {
+    // A question is one hop from the asker. An answer is the second hop, and it cannot start a new exchange: no handler
+    // publishes anything in response, so a chain of questions and answers ends after two hops.
+    const p = parsed.data as { fromAgent: string; toAgent: string };
+    if (input.producer !== p.fromAgent) throw new EventValidationError("A question or answer must be published by the agent it comes from.");
+    if (target !== p.toAgent) throw new EventValidationError("A question or answer must target the agent it names.");
+    const expected = input.type === "agent.question" ? 1 : 2;
+    if (hopCount !== expected) throw new EventValidationError(`"${input.type}" must be hop ${expected}.`);
   } else if (hopCount !== 0) {
-    throw new EventValidationError("Only handoffs carry a hop count.");
+    throw new EventValidationError("Only handoffs, questions and answers carry a hop count.");
   }
 
   return {

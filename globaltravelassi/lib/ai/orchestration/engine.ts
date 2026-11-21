@@ -18,6 +18,12 @@ import { claimsOf } from "../quality/extract";
 import { taskFailedNotice, type Notice } from "../notifications/rules";
 import type { Claim } from "../quality/types";
 import { backoffDelayMs, DEFAULT_RETRY_POLICY, shouldRetry } from "./retry";
+import { decideGate, type GateResult } from "../collaboration/gate";
+import { AGENT_CAPABILITIES, routeTask, routingCapabilityFor, type Capability } from "../collaboration/delegation";
+import type { CollaborationStore } from "../collaboration/store";
+import type { WorkflowTemplate } from "../workflows/templates";
+import type { QualityIssue } from "../quality/types";
+import { AGENT_KEYS, type AgentKey } from "../types";
 import type { AgentRunRecord, TaskRecord } from "./records";
 import { ConcurrencyError, type TaskStore, type NewTask } from "./store";
 import { COUNTRIES, LANGUAGES, type Actor, type AgentInput, type TaskStatus } from "../types";
@@ -61,6 +67,16 @@ export interface OrchestratorDeps {
   briefing?: () => Promise<{ scope: string; key: string; value: unknown }[]>;
   /** Owner inbox. A terminal task failure is reported here. A failed notice never changes task state. */
   notify?: (notice: Notice) => Promise<unknown>;
+  /** Review panels, routing decisions and conflicts. Recorded for every decision the engine takes. */
+  collaboration: CollaborationStore;
+}
+
+interface AgentChoice {
+  agent: AgentKey;
+  capability: Capability | null;
+  reasons: string[];
+  /** Agents that hold the capability. Zero for pinned steps. */
+  qualified: number;
 }
 
 export interface TickReport {
@@ -110,9 +126,11 @@ export class Orchestrator {
 
     const idByStep = new Map<string, string>();
     for (const s of template.steps) idByStep.set(s.key, this.deps.newId());
+    const choices = await this.chooseAgents(template, input.workflowKey);
 
     const tasks: NewTask[] = template.steps.map((s: WorkflowStep) => {
-      const agent = getAgent(s.agent);
+      const chosen = choices.get(s.key)?.agent ?? s.agent;
+      const agent = getAgent(chosen);
       const due = s.dueInHours ? new Date(now.getTime() + s.dueInHours * 3_600_000).toISOString() : null;
       const taskInput: AgentInput = {
         objective: input.objective,
@@ -130,7 +148,7 @@ export class Orchestrator {
         runId,
         workflowKey: input.workflowKey,
         stepKey: s.key,
-        agent: s.agent,
+        agent: chosen,
         title: s.title,
         status: "pending" as TaskStatus,
         priority: s.priority,
@@ -164,6 +182,7 @@ export class Orchestrator {
     );
 
     if (result.created) {
+      await this.recordRouting(template, result.run.id, idByStep, choices, now.toISOString());
       await this.audit("owner:" + input.createdBy, "workflow.started", "workflow_run", result.run.id, {
         workflowKey: input.workflowKey,
         taskCount: tasks.length,
@@ -394,29 +413,48 @@ export class Orchestrator {
     const peers: Claim[] = (await this.deps.store.listTasksByRunIds([task.runId]))
       .filter((t) => t.id !== task.id && t.status === "succeeded" && t.output !== null)
       .flatMap((t) => claimsOf(t.agent, getAgent(t.agent).outputKind, t.output));
-    const review = await this.deps.quality.reviewAndRecord({
-      taskId: task.id,
-      runId: task.runId,
-      agent: task.agent,
-      outputKind: def.outputKind,
-      output,
-      schema: def.outputSchema,
-      language: input.language,
-      allowlist: this.deps.visaAllowlist(),
-      peerClaims: peers,
-      attempt: previous.length + 1,
-    });
-    const codes = [...new Set(review.issues.filter((i) => i.severity !== "info").map((i) => i.code))].join(", ") || "none";
+    // Two independent reviewers vote: the controller and the compliance lens. The gate decides the final status
+    // before the review is stored, so the stored history and the action taken always agree.
+    let gate!: GateResult;
+    const review = await this.deps.quality.reviewAndRecord(
+      {
+        taskId: task.id,
+        runId: task.runId,
+        agent: task.agent,
+        outputKind: def.outputKind,
+        output,
+        schema: def.outputSchema,
+        language: input.language,
+        allowlist: this.deps.visaAllowlist(),
+        peerClaims: peers,
+        attempt: previous.length + 1,
+      },
+      (controllerReview) => {
+        gate = decideGate({
+          producer: task.agent,
+          outputKind: def.outputKind,
+          output,
+          controllerStatus: controllerReview.status,
+          controllerIssues: controllerReview.issues,
+          attempt: controllerReview.attempt,
+        });
+        return gate.status;
+      },
+    );
+    const status = review.status;
+    const codes = [...new Set([...review.issues.filter((i) => i.severity !== "info").map((i) => i.code), ...gate.votes.flatMap((v) => v.codes)])].join(", ") || "none";
+    await this.recordPanel(task, review.attempt, gate);
+    await this.recordConflicts(task, review.issues, peers);
 
-    if (review.status === "PASSED") return "accept";
+    if (status === "PASSED") return "accept";
 
-    if (review.status === "NEEDS_REVISION") {
+    if (status === "NEEDS_REVISION") {
       await this.deps.store.transitionTask(task.id, "running", "ready", { lastError: `Revision requested: ${codes}`, nextRunAt: nowIso }, nowIso);
       await this.audit(`agent:${task.agent}`, "task.revision_requested", "task", task.id, { attempt: review.attempt, codes });
       return "retried";
     }
 
-    if (review.status === "REJECTED") {
+    if (status === "REJECTED") {
       const reason = `Quality rejected the output: ${codes}`;
       await this.deps.store.transitionTask(task.id, "running", "failed", { lastError: reason }, nowIso);
       await this.audit(`agent:${task.agent}`, "task.quality_rejected", "task", task.id, { attempt: review.attempt, codes });
@@ -439,10 +477,17 @@ export class Orchestrator {
       actionClass: "propose_change",
       riskLevel: "medium",
       summary: `Human review needed (${codes}): ${task.title}`.slice(0, 500),
-      preview: { output, quality: { status: review.status, overall: review.overall, codes } },
+      preview: { output, quality: { status, panel: gate.consensus.decision, overall: review.overall, codes } },
       requestedBy: { kind: "system" },
     });
     await this.audit(`agent:${task.agent}`, "task.waiting_approval", "task", task.id, { reason: "quality_human_review", codes });
+    await this.publishSafely({
+      type: "task.waiting_approval",
+      producer: task.agent,
+      payload: { taskId: task.id, runId: task.runId, agent: task.agent, actionClass: "propose_change" },
+      idempotencyKey: `task.waiting_approval:${task.id}:quality`,
+      correlationId: task.runId,
+    });
     return "waitingApproval";
   }
 
@@ -585,6 +630,7 @@ export class Orchestrator {
     const nowIso = this.deps.now().toISOString();
     if (decision === "approved") {
       await this.deps.store.transitionTask(task.id, "waiting_approval", "succeeded", { lastError: null }, nowIso);
+      await this.publishHandoffs(task);
     } else {
       await this.deps.store.transitionTask(task.id, "waiting_approval", "cancelled", { lastError: "Rejected by owner." }, nowIso);
     }
@@ -672,6 +718,131 @@ export class Orchestrator {
   }
 
   /** Publishes an event. A refused or failed publish is logged and never changes or blocks task state. */
+  /**
+   * Chooses the agent for each step. Routable steps go to the least-loaded qualified agent; the load counts open tasks
+   * and the choices already made in this run. Pinned steps keep their template agent: approvals, customer messages,
+   * publishing, compliance reviews and deterministic steps.
+   */
+  private async chooseAgents(template: WorkflowTemplate, workflowKey: string): Promise<Map<string, AgentChoice>> {
+    const load = new Map<AgentKey, number>();
+    for (const t of await this.deps.store.listOpenTasks()) {
+      const key = t.agent as AgentKey;
+      load.set(key, (load.get(key) ?? 0) + 1);
+    }
+    const candidates = AGENT_KEYS.map((agent) => ({ agent, openTasks: load.get(agent) ?? 0, available: true }));
+    const choices = new Map<string, AgentChoice>();
+    for (const step of template.steps) {
+      const capability = routingCapabilityFor(workflowKey, step.key, step.approval !== null, step.deterministic !== null);
+      if (!capability) {
+        choices.set(step.key, { agent: step.agent, capability: null, reasons: ["pinned"], qualified: 0 });
+        continue;
+      }
+      const qualified = candidates.filter((c) => AGENT_CAPABILITIES[c.agent].includes(capability)).length;
+      const result = routeTask(capability, candidates, { preferred: step.agent });
+      if ("agent" in result) {
+        const chosen = candidates.find((c) => c.agent === result.agent);
+        if (chosen) chosen.openTasks += 1;
+        choices.set(step.key, { agent: result.agent, capability, reasons: result.reasons, qualified });
+      } else {
+        choices.set(step.key, { agent: step.agent, capability, reasons: ["template_kept", result.refused], qualified });
+      }
+    }
+    return choices;
+  }
+
+  /** Writes one routing decision per step and an audit entry for each. A failed write never stops the run. */
+  private async recordRouting(template: WorkflowTemplate, runId: string, idByStep: Map<string, string>, choices: Map<string, AgentChoice>, createdAt: string): Promise<void> {
+    for (const step of template.steps) {
+      const choice = choices.get(step.key);
+      const taskId = idByStep.get(step.key);
+      if (!choice || !taskId) continue;
+      try {
+        await this.deps.collaboration.saveRouting({
+          id: this.deps.newId(),
+          runId,
+          taskId,
+          stepKey: step.key,
+          capability: choice.capability ?? "none",
+          templateAgent: step.agent,
+          chosenAgent: choice.agent,
+          reasons: choice.reasons,
+          candidates: choice.qualified,
+          createdAt,
+        });
+        await this.audit("system", "routing.decided", "task", taskId, {
+          stepKey: step.key,
+          capability: choice.capability ?? "none",
+          templateAgent: step.agent,
+          chosenAgent: choice.agent,
+          reasons: choice.reasons,
+        });
+      } catch (error) {
+        this.deps.logger.error("routing.not_recorded", { reason: error instanceof Error ? error.name : "unknown" });
+      }
+    }
+  }
+
+  /** Records the consensus behind a gate decision: votes, exclusions, reasons. Codes only. */
+  private async recordPanel(task: TaskRecord, attempt: number, gate: GateResult): Promise<void> {
+    const createdAt = this.deps.now().toISOString();
+    try {
+      await this.deps.collaboration.savePanel({
+        id: this.deps.newId(),
+        taskId: task.id,
+        runId: task.runId,
+        producer: task.agent,
+        attempt,
+        status: gate.status,
+        decision: gate.consensus.decision,
+        votes: gate.votes.map((v) => ({ reviewer: v.reviewer, verdict: v.verdict, codes: v.codes })),
+        counted: gate.consensus.counted,
+        excluded: gate.consensus.excluded,
+        reasons: gate.consensus.reasons,
+        disagreement: gate.consensus.disagreement,
+        createdAt,
+      });
+      await this.audit(`agent:${task.agent}`, "review.consensus", "task", task.id, {
+        attempt,
+        decision: gate.consensus.decision,
+        status: gate.status,
+        reasons: gate.consensus.reasons,
+        counted: gate.consensus.counted.length,
+      });
+    } catch (error) {
+      this.deps.logger.error("review.panel_not_recorded", { reason: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+
+  /**
+   * Opens a conflict for each claim pair that disagrees between agents in a run. A conflict is stored once per run
+   * and subject. It stays open until the owner resolves it.
+   */
+  private async recordConflicts(task: TaskRecord, issues: QualityIssue[], peers: Claim[]): Promise<void> {
+    const parties = [...new Set([task.agent, ...peers.map((p) => p.producer)])];
+    if (parties.length < 2) return;
+    for (const issue of issues.filter((i) => i.code === "conflicting_claims")) {
+      try {
+        const detectedAt = this.deps.now().toISOString();
+        const result = await this.deps.collaboration.recordConflict({
+          id: this.deps.newId(),
+          runId: task.runId,
+          taskId: task.id,
+          subjectKey: issue.path.slice(0, 200),
+          parties,
+          codes: [issue.code],
+          status: "open",
+          resolution: null,
+          resolvedBy: null,
+          resolvedAt: null,
+          detectedAt,
+        });
+        if (result.created) await this.audit(`agent:${task.agent}`, "conflict.detected", "workflow_run", task.runId, { parties, code: issue.code });
+      } catch (error) {
+        this.deps.logger.error("conflict.not_recorded", { reason: error instanceof Error ? error.name : "unknown" });
+      }
+    }
+  }
+
   /**
    * Hands a finished task's result to the agents that depend on it. One handoff event per direct dependent that a
    * different agent will run. Handoffs are idempotent per (task, dependent) and carry only identifiers and a short

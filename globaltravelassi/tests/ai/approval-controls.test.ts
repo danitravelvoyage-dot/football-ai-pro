@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeHarness, startInput, OWNER } from "./helpers";
+import { makeHarness, startInput, OWNER, clearQualityHolds } from "./helpers";
 import { APPROVAL_POLICY, approvalRequiredFor, expiresAtFor } from "@/lib/ai/approvals/policy";
 import { payloadFingerprint } from "@/lib/ai/approvals/payload";
 import { ApprovalExpiredError, ApprovalNotRequiredError, ApprovalPayloadMismatchError, ApprovalInputError, ForbiddenActorError } from "@/lib/ai/approvals";
@@ -11,10 +11,8 @@ const HOUR = 3_600_000;
 
 async function startMarketingUntilApproval(h: ReturnType<typeof makeHarness>, key: string) {
   const { runId } = await h.orch.startWorkflow(startInput({ idempotencyKey: key }));
-  for (let i = 0; i < 40; i++) {
-    const report = await h.orch.tick({ limit: 10 });
-    if (report.claimed === 0) break;
-  }
+  // The compliance output is held for the owner first; approving it lets the run reach the publishing approval.
+  await clearQualityHolds(h);
   const [approval] = (await h.store.listApprovals("pending")).filter((a) => a.actionClass === "external_publish");
   return { runId, approval: approval! };
 }
@@ -93,7 +91,7 @@ describe("duplicate execution and payload binding", () => {
     await expect(h.orch.decideApproval(approval.id, "approved", OWNER, null)).rejects.toBeInstanceOf(ConcurrencyError);
     const cards = (await h.store.listArtifacts(500)).filter((a) => a.kind === "owner_action_card");
     expect(cards).toHaveLength(1);
-    expect(h.audit.events.filter((e) => e.type === "approval.approved")).toHaveLength(1);
+    expect(h.audit.events.filter((e) => e.type === "approval.approved" && e.entityId === approval.id)).toHaveLength(1);
   });
 
   it("changing the approved payload invalidates the approval", async () => {

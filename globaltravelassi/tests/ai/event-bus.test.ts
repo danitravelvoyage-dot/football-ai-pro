@@ -308,8 +308,10 @@ describe("engine integration", () => {
     const types = events.items.filter((e) => e.correlationId === runId).map((e) => e.eventType);
     // The in-memory clock does not advance between steps, so this checks what happened, not the order.
     expect(types.filter((t) => t === "workflow.started")).toHaveLength(1);
-    expect(types.filter((t) => t === "task.ready")).toHaveLength(7);
-    expect(types.filter((t) => t === "task.succeeded")).toHaveLength(6);
+    // Five research steps succeed. The compliance output is held for the owner, so its step is ready but not succeeded,
+    // and the publishing step is never reached. The hold itself is announced as a waiting-approval event.
+    expect(types.filter((t) => t === "task.ready")).toHaveLength(6);
+    expect(types.filter((t) => t === "task.succeeded")).toHaveLength(5);
     expect(types.filter((t) => t === "task.waiting_approval")).toHaveLength(1);
   });
 

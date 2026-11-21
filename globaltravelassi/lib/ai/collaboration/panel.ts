@@ -5,10 +5,10 @@ import type { QualityIssue, QualityStatus } from "../quality/types";
 import type { Vote } from "./consensus";
 
 /**
- * Two independent reviewers for one output:
+ * Independent votes on one output. Pure apart from the controller's deterministic review.
  *  - QualityController: the full deterministic review (schema, completeness, language, facts, policy, brand).
  *  - ComplianceAgent lens: policy and brand checks only, run as its own pass. It is deterministic code, not a model.
- * Each returns a vote. The consensus module decides what the votes mean; this module only gathers them.
+ * The consensus module decides what the votes mean; this module only produces them.
  */
 
 const STATUS_TO_VERDICT: Record<QualityStatus, Vote["verdict"]> = {
@@ -18,27 +18,23 @@ const STATUS_TO_VERDICT: Record<QualityStatus, Vote["verdict"]> = {
   REQUIRES_HUMAN_REVIEW: "escalate",
 };
 
-function complianceVerdict(issues: QualityIssue[]): Vote["verdict"] {
-  // A blocking policy breach (for example a guaranteed visa outcome) is a compliance rejection, not a revision request.
-  if (issues.some((i) => i.severity === "critical" || i.severity === "blocking")) return "reject";
-  if (issues.length > 0) return "revise";
-  return "approve";
+export function qualityVote(status: QualityStatus, issues: QualityIssue[]): Vote {
+  return { reviewer: "QualityController", verdict: STATUS_TO_VERDICT[status], codes: [...new Set(issues.map((i) => i.code))] };
+}
+
+/** A blocking policy breach (for example a guaranteed visa outcome) is a compliance rejection, not a revision request. */
+export function complianceVote(outputKind: string, output: unknown): Vote {
+  const texts = textsOf(outputKind, output);
+  const issues = [...policyChecks(texts), ...brandChecks(texts)];
+  const verdict: Vote["verdict"] = issues.some((i) => i.severity === "critical" || i.severity === "blocking")
+    ? "reject"
+    : issues.length > 0
+      ? "revise"
+      : "approve";
+  return { reviewer: "ComplianceAgent", verdict, codes: [...new Set(issues.map((i) => i.code))] };
 }
 
 export function runReviewPanel(input: ReviewInput, controller: QualityController): Vote[] {
   const review = controller.review(input);
-  const texts = textsOf(input.outputKind, input.output);
-  const compliance = [...policyChecks(texts), ...brandChecks(texts)];
-  return [
-    {
-      reviewer: "QualityController",
-      verdict: STATUS_TO_VERDICT[review.status],
-      codes: review.issues.map((i) => i.code),
-    },
-    {
-      reviewer: "ComplianceAgent",
-      verdict: complianceVerdict(compliance),
-      codes: compliance.map((i) => i.code),
-    },
-  ];
+  return [qualityVote(review.status, review.issues), complianceVote(input.outputKind, input.output)];
 }

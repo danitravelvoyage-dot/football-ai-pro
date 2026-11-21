@@ -143,11 +143,12 @@ describe("the briefing reaches agent execution", () => {
     const payloads: string[] = [];
     const mock = mockFor();
     let calls = 0;
-    // Turns the mock reply into an unsupported, high-confidence claim with no source: the quality gate asks for a revision.
+    // Turns the mock reply into an unsupported, high-confidence factual claim with no source: the quality gate asks for a
+    // revision. It is not a compliance violation, so the compliance lens approves it and the revision loop runs.
     const unsupported = (text: string) => {
       const replace = (v: unknown, key?: string): unknown => {
         if (key === "confidence") return "high";
-        if (typeof v === "string") return v.length >= 8 ? "Guaranteed visa approval in one week, sure thing!" : v;
+        if (typeof v === "string") return v.length >= 8 ? "Demand rose sharply last year, sure thing!" : v;
         if (Array.isArray(v)) return v.map((x) => replace(x));
         if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, replace(x, k)]));
         return v;

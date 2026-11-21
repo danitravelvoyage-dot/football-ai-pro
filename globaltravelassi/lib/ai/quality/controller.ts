@@ -6,7 +6,7 @@ import { schemaChecks } from "./schema";
 import { dimensionScores, overallScore, decideStatus } from "./scoring";
 import { applyRevisionLimit, feedbackFor } from "./revision";
 import type { QualityStore, QualityReviewRecord } from "./store";
-import { DEFAULT_QUALITY_CONFIG, type Claim, type QualityIssue, type QualityReview, type QualityConfig } from "./types";
+import { DEFAULT_QUALITY_CONFIG, type Claim, type QualityIssue, type QualityReview, type QualityConfig, type QualityStatus } from "./types";
 import type { z } from "zod";
 
 export class QualityForbiddenError extends Error {
@@ -74,9 +74,19 @@ export class QualityController {
     return { status, attempt: input.attempt, overall, scores, issues, feedback: status === "NEEDS_REVISION" ? feedbackFor(issues) : [] };
   }
 
-  /** Runs the review and stores it. The stored record holds codes and locations only, never the output text. */
-  async reviewAndRecord(input: ReviewInput): Promise<QualityReview> {
-    const review = this.review(input);
+  /**
+   * Runs the review and stores it. The stored record holds codes and locations only, never the output text.
+   * `decide` may set the final status from the wider decision (for example the quality gate's consensus). It is applied
+   * before the record is written, so the stored history always matches the decision the engine acts on.
+   */
+  async reviewAndRecord(input: ReviewInput, decide?: (review: QualityReview) => QualityStatus): Promise<QualityReview> {
+    const controllerReview = this.review(input);
+    const status = decide ? decide(controllerReview) : controllerReview.status;
+    const review: QualityReview = {
+      ...controllerReview,
+      status,
+      feedback: status === "NEEDS_REVISION" ? feedbackFor(controllerReview.issues) : [],
+    };
     const createdAt = this.deps.now().toISOString();
     await this.deps.store.saveReview({
       id: this.deps.newId(),

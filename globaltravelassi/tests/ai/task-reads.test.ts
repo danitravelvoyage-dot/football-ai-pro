@@ -118,9 +118,11 @@ describe("in-memory task reads share the same contract", () => {
       const tasks = await h.store.listTasksByRunIds([runId]);
       const byStep = Object.fromEntries(tasks.map((t) => [t.stepKey, t.status]));
       expect(byStep.research).toBe("succeeded");
-      expect(byStep.compliance).toBe("succeeded");
-      expect(byStep.approval).toBe("waiting_approval");
+      // Compliance outputs are held for the owner, so every run stops at that review.
+      expect(byStep.compliance).toBe("waiting_approval");
+      expect(byStep.approval).toBe("pending");
     }
-    expect(await h.store.listOpenTasks()).toHaveLength(80);
+    // Each run leaves two open tasks: the compliance step held for the owner, and the publishing step behind it.
+    expect(await h.store.listOpenTasks()).toHaveLength(160);
   });
 });

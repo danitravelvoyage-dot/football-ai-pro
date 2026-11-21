@@ -37,6 +37,21 @@ function agentHandler(agent: AgentKey, deps: HandlerDeps): EventHandler {
       await record(deps, `agent:${agent}`, "agent.task_received", "task", p.taskId, { eventId: event.id, runId: p.runId });
       return;
     }
+    if (event.eventType === "agent.question") {
+      const p = event.payload as EventPayload<"agent.question">;
+      if (p.toAgent !== agent) throw new PermanentHandlerError(`A question for ${p.toAgent} was delivered to ${agent}.`);
+      // The question is kept as a short memory note keyed by event id. The asker's text is not repeated back here.
+      await deps.tasks.saveMemory(agent, `question:${event.id}`, `Question from ${p.fromAgent} is waiting for an answer.`, deps.now().toISOString());
+      await record(deps, `agent:${agent}`, "agent.question_received", "event", event.id, { fromAgent: p.fromAgent, questionId: p.questionId, runId: p.runId });
+      return;
+    }
+    if (event.eventType === "agent.answer") {
+      const p = event.payload as EventPayload<"agent.answer">;
+      if (p.toAgent !== agent) throw new PermanentHandlerError(`An answer for ${p.toAgent} was delivered to ${agent}.`);
+      await deps.tasks.saveMemory(agent, `answer:${event.id}`, p.answer, deps.now().toISOString());
+      await record(deps, `agent:${agent}`, "agent.answer_received", "event", event.id, { fromAgent: p.fromAgent, questionId: p.questionId, runId: p.runId });
+      return;
+    }
     if (event.eventType === "agent.handoff") {
       const p = event.payload as EventPayload<"agent.handoff">;
       if (p.toAgent !== agent) throw new PermanentHandlerError(`A handoff for ${p.toAgent} was delivered to ${agent}.`);

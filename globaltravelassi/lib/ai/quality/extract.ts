@@ -13,6 +13,7 @@ export function textsOf(outputKind: string, output: unknown): { path: string; te
       }
     });
   };
+  if (outputKind === "answer" && typeof o.answer === "string") return [{ path: "answer", text: o.answer }];
   if (outputKind === "research") pushAll(o.findings, "findings", ["insight", "evidence"]);
   if (outputKind === "content") pushAll(o.drafts, "drafts", ["text"]);
   if (outputKind === "strategy") pushAll(o.campaigns, "campaigns", ["goal", "rationale"]);

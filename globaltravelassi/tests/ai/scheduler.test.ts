@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeHarness, makeIds, OWNER, AGENT, startInput } from "./helpers";
+import { makeHarness, makeIds, OWNER, AGENT, startInput, clearQualityHolds } from "./helpers";
 import { silentLogger } from "@/lib/ai/logging";
 import { ForbiddenActorError } from "@/lib/ai/approvals";
 import { MemorySchedulerStore } from "@/lib/ai/scheduler/store";
@@ -310,10 +310,8 @@ describe("autonomous scheduler service", () => {
   it("the cycle runs the real engine: expired approvals are swept and their tasks cancelled", async () => {
     const h = makeHarness({ start: T0 });
     const { runId } = await h.orch.startWorkflow(startInput({ idempotencyKey: "sched-approval-1" }));
-    for (let i = 0; i < 40; i++) {
-      const r = await h.orch.tick({ limit: 10 });
-      if (r.claimed === 0) break;
-    }
+    // The compliance output is held for the owner first. Approving it lets the run reach the publishing approval.
+    await clearQualityHolds(h);
     const [approval] = (await h.store.listApprovals("pending")).filter((a) => a.actionClass === "external_publish");
     expect(approval).toBeDefined();
 

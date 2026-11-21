@@ -45,10 +45,16 @@ describe("consensus decisions", () => {
     expect(reachConsensus("P", [v("A", "approve"), v("B", "approve")]).decision).toBe("approve");
   });
 
-  it("sends the output back for revision when a reviewer asks for it and none rejects", () => {
-    const r = reachConsensus("P", [v("A", "approve"), v("B", "revise", ["missing_source"])]);
+  it("sends the output back for revision when every reviewer that spoke asks for revision", () => {
+    const r = reachConsensus("P", [v("A", "revise", ["missing_source"]), v("B", "revise", ["missing_source"])]);
     expect(r.decision).toBe("revise");
     expect(r.reasons).toEqual(["revision_requested"]);
+  });
+
+  it("sends an output back when one reviewer approves and another asks for a revision, since that is work to do, not a disagreement", () => {
+    const r = reachConsensus("P", [v("A", "approve"), v("B", "revise", ["missing_source"])]);
+    expect(r.decision).toBe("revise");
+    expect(r.disagreement).toBe(true);
   });
 
   it("escalates to the owner when reviewers disagree, instead of counting a majority", () => {

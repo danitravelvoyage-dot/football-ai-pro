@@ -39,6 +39,9 @@ import { CompetitorService } from "./competitors/service";
 import { SupabaseCompetitorStore } from "./competitors/supabase-store";
 import type { HttpFetch } from "./competitors/fetch";
 import { BusinessReportService } from "./business/service";
+import { SupabaseCollaborationStore } from "./collaboration/supabase-store";
+import { CollaborationService } from "./collaboration/service";
+import { CommunicationService } from "./collaboration/communication";
 
 /** Builds provider adapters from configuration. Secrets are read here, on the server, and never returned. */
 export function buildProviders(configs: ProviderConfig[]): { config: ProviderConfig; provider: LLMProvider }[] {
@@ -74,6 +77,8 @@ export interface AiServices {
   crm: CrmService;
   competitors: CompetitorService;
   businessReports: BusinessReportService;
+  collaboration: CollaborationService;
+  communication: CommunicationService;
   audit: AuditSink;
   usage: UsageStore;
   providers: ProviderConfig[];
@@ -113,6 +118,7 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   const memory = new MemoryService({ store: new SupabaseMemoryStore(db), audit, now, newId });
   const notifications = new NotificationService({ store: new SupabaseNotificationStore(db), audit, now, newId });
   const notify = (notice: Notice) => notifications.notify(notice);
+  const collaborationStore = new SupabaseCollaborationStore(db);
   const orchestrator = new Orchestrator({
     store,
     runtime,
@@ -129,6 +135,7 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
     // Owner memory for agent runs, built by the platform with a system actor. Agents cannot request it.
     briefing: () => memory.briefing({ kind: "system" }),
     notify,
+    collaboration: collaborationStore,
   });
   const eventStore = new SupabaseEventStore(db);
   const scheduler = new SchedulerService({
@@ -178,8 +185,10 @@ export async function buildAiServices(db: AiDatabase): Promise<AiServices> {
   });
   const crm = new CrmService({ store: new SupabaseCrmStore(db), audit, now, newId });
   const competitors = new CompetitorService({ store: new SupabaseCompetitorStore(db), fetch: ((url, init) => fetch(url, init)) as HttpFetch, audit, now, newId });
+  const collaboration = new CollaborationService({ store: collaborationStore, audit, now, newId });
+  const communication = new CommunicationService({ bus: platform.events, events: eventStore, runtime, quality: platform.quality, collaboration: collaborationStore, audit, now, newId });
   const businessReports = new BusinessReportService({ crm, campaigns, competitors, notify: (n) => notifications.notify(n), audit, now, newId });
-  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, audit, usage, providers: configs };
+  return { orchestrator, store, events: platform.events, context: platform.context, knowledge: platform.knowledge, quality: platform.quality, memory, scheduler, notifications, campaigns, content, crm, competitors, businessReports, collaboration, communication, audit, usage, providers: configs };
 }
 
 async function loadVisaAllowlist(db: Awaited<ReturnType<typeof createServerSupabase>>): Promise<string[]> {
