@@ -11,6 +11,7 @@ export function AdminNav({ locale, dict, current }: { locale: Locale; dict: Dict
     { key: "customers", href: `/${locale}/admin/customers`, label: dict.admin.customers },
     { key: "applications", href: `/${locale}/admin/applications`, label: dict.admin.applications },
     { key: "services", href: `/${locale}/admin/services`, label: dict.admin.services },
+    { key: "payments", href: `/${locale}/admin/payments`, label: dict.manualPayments.navPayments },
     { key: "reports", href: `/${locale}/admin/reports`, label: dict.admin.reports },
   ];
   return (

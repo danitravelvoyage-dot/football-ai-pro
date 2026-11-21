@@ -8,6 +8,9 @@ import { serviceTitle } from "@/lib/catalog";
 import { whatsappLink } from "@/lib/config";
 import { formMessages } from "@/lib/validation/messages";
 import { addNoteAction, deleteApplicationAction, recordPaymentAction, setDocumentVerifiedAction, setPaymentStatusAction, updateStatusAction } from "@/lib/actions/admin";
+import { decidePaymentAction } from "@/lib/actions/payments";
+import { isDecidable } from "@/lib/payments/rules";
+import { loadProofLinks } from "@/lib/payments/load";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { SelectField, TextAreaField, TextField } from "@/components/forms/Fields";
 import { Panel } from "@/components/admin/AdminUI";
@@ -26,6 +29,20 @@ export default async function AdminApplicationPage({ params }: { params: Promise
   const t = dict.admin.detail;
   const messages = formMessages(dict);
   const { application: app, documents, payments, notes, events } = await getAdminApplicationDetail(id);
+  const mp = dict.manualPayments;
+  const proofLinks = await loadProofLinks(payments.flatMap((p) => (p.evidence_path ? [p.evidence_path] : [])));
+  const paymentMessages = {
+    ...formMessages(dict),
+    saved: mp.decided,
+    confirmed: mp.decided,
+    rejected: mp.decided,
+    already_decided: mp.alreadyDecided,
+    forbidden: mp.forbidden,
+    unauthorized: mp.unauthorized,
+    invalid_input: mp.invalid,
+    not_found: mp.notFound,
+    generic: mp.generic,
+  };
   if (!app) notFound();
 
   const status = app.status as ApplicationStatus;
@@ -114,6 +131,7 @@ export default async function AdminApplicationPage({ params }: { params: Promise
                       <p className="text-xs text-navy-500">{dict.paymentStatuses[p.status]} {p.received_at ? `· ${formatDate(p.received_at, locale)}` : ""} {p.reference ? `· ${p.reference}` : ""}</p>
                       {p.note && <p className="mt-1 text-xs text-navy-500">{p.note}</p>}
                     </div>
+                    {!p.evidence_path && (
                     <div className="flex flex-wrap gap-2">
                       {p.status !== "received" && (
                         <ActionForm action={setPaymentStatusAction} messages={messages} submitLabel={t.markReceived} pendingLabel={dict.common.loading} submitVariant="navy" className="inline">
@@ -128,6 +146,30 @@ export default async function AdminApplicationPage({ params }: { params: Promise
                         </ActionForm>
                       )}
                     </div>
+                    )}
+                    {p.evidence_path && (
+                      <div className="w-full space-y-3 rounded-2xl bg-navy-50/60 p-4">
+                        <p className="text-xs leading-relaxed text-navy-600">{mp.proofNote}</p>
+                        {proofLinks.get(p.evidence_path) ? (
+                          <a href={proofLinks.get(p.evidence_path)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gold-700 underline">{mp.proof}</a>
+                        ) : (
+                          <p className="text-xs text-rose-700">{mp.generic}</p>
+                        )}
+                        {p.verified_at && (
+                          <p className="text-xs text-navy-600">
+                            {mp.verifiedBy}: <span dir="ltr" className="font-mono">{p.verified_by ?? "—"}</span> · {mp.verifiedAt}: {formatDateTime(p.verified_at, locale)}
+                          </p>
+                        )}
+                        {p.decision_reason && <p className="text-xs text-navy-700">{p.decision_reason}</p>}
+                        {isDecidable(p.status) && (
+                          <ActionForm action={decidePaymentAction} messages={paymentMessages} submitLabel={mp.decide} pendingLabel={dict.common.loading} submitVariant="navy" className="grid gap-3 sm:grid-cols-2">
+                            <input type="hidden" name="paymentId" value={p.id} />
+                            <SelectField name="decision" label={mp.decideTitle} required defaultValue="approve" options={[{ value: "approve", label: mp.approve }, { value: "reject", label: mp.reject }]} />
+                            <TextField name="reason" label={mp.reasonLabel} required maxLength={500} />
+                          </ActionForm>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

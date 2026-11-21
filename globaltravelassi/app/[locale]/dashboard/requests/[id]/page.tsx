@@ -11,6 +11,9 @@ import { deleteDocumentAction } from "@/lib/actions/documents";
 import { whatsappLink } from "@/lib/config";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { DocumentUploader } from "@/components/DocumentUploader";
+import { PaymentPanel } from "@/components/payments/PaymentPanel";
+import { loadPaymentMethodSettings } from "@/lib/payments/load";
+import { isOpenForPayment, offeredMethods } from "@/lib/payments/rules";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Alert, Badge, Card, ButtonLink } from "@/components/ui";
 
@@ -46,6 +49,16 @@ export default async function RequestPage({
   const editable = documentsEditableStatuses.includes(status);
   const wa = whatsappLink(`${app.reference}`);
   const typeLabels = dict.docTypes as Record<string, string>;
+  const mp = dict.manualPayments;
+  const paid = payments.some((p) => p.status === "received");
+  const showPayment = isOpenForPayment(status) && !paid && Boolean(app.services?.price);
+  const offered = showPayment
+    ? offeredMethods(await loadPaymentMethodSettings(), locale).map((m) => ({
+        method: m.method,
+        label: dict.paymentMethods[m.method],
+        instructions: m.instructions,
+      }))
+    : [];
 
   const eventText = (e: (typeof timeline)[number]) => {
     if (e.kind === "created") return dict.apply.successTitle;
@@ -132,6 +145,29 @@ export default async function RequestPage({
               )}
             </div>
           </Card>
+
+          {/* Payment: the amount, the offered methods and the proof */}
+          {(showPayment || paid) && (
+            <Card>
+              <h2 className="font-display text-2xl text-navy-900">{mp.title}</h2>
+              {paid ? (
+                <Alert tone="success">{mp.paid}</Alert>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm text-navy-600">{mp.hint}</p>
+                  <div className="mt-5">
+                    <PaymentPanel
+                      applicationId={id}
+                      userId={user.id}
+                      amountText={formatMoney(app.services!.price!, app.services!.currency, locale)}
+                      methods={offered}
+                      labels={mp}
+                    />
+                  </div>
+                </>
+              )}
+            </Card>
+          )}
 
           {/* Payments */}
           <Card>

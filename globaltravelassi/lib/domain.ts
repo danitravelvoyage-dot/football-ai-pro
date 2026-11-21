@@ -1,6 +1,6 @@
 // Single source of truth for enumerations. The database CHECK constraints use the same values.
 export const applicationStatuses = [
-  "new", "in_review", "documents_required", "submitted", "approved", "rejected", "completed", "cancelled",
+  "new", "in_review", "documents_required", "submitted", "approved", "rejected", "completed", "cancelled", "payment_pending",
 ] as const;
 export type ApplicationStatus = (typeof applicationStatuses)[number];
 
@@ -13,10 +13,14 @@ export const documentTypes = [
 ] as const;
 export type DocumentType = (typeof documentTypes)[number];
 
-export const paymentMethods = ["cash", "bank_transfer", "ccp", "baridimob", "other"] as const;
+export const paymentMethods = ["cash", "bank_transfer", "ccp", "baridimob", "other", "usdt", "redotpay"] as const;
+
+/** The methods a client can choose. Each one is offered only when the owner enables it, with instructions. */
+export const selfServicePaymentMethods = ["usdt", "baridimob", "redotpay"] as const;
+export type SelfServicePaymentMethod = (typeof selfServicePaymentMethods)[number];
 export type PaymentMethod = (typeof paymentMethods)[number];
 
-export const paymentStatuses = ["pending", "received", "cancelled"] as const;
+export const paymentStatuses = ["pending", "received", "cancelled", "pending_review", "rejected"] as const;
 export type PaymentStatus = (typeof paymentStatuses)[number];
 
 export const currencies = ["DZD", "EUR", "USD"] as const;
@@ -89,6 +93,12 @@ export interface PaymentRow {
   note: string;
   received_at: string | null;
   created_at: string;
+  /** Proof of transfer, when the client sent one. Legacy and owner-recorded payments have none. */
+  evidence_path?: string | null;
+  submitted_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  decision_reason?: string | null;
 }
 
 export interface ProfileRow {

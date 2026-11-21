@@ -2,6 +2,9 @@
 
 **Status: planned, nothing executed.** Migration 0018 and the migrations it depends on wait for the owner's approval. Production is out of scope.
 
+
+> **Update (manual payments):** migration `0019_manual_payments.sql` was added after this plan was written. It depends only on the base schema (0001) and must be added to the execution order, and its checksum recorded, before any staging run. The checksum table above lists 0002 to 0018 only.
+
 ## 1. Supabase inspection (read only, done in this phase)
 
 | Project | Ref | Status | Migration history | Tables in `public` |

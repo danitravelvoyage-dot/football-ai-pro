@@ -6,6 +6,7 @@ const tone: Record<ApplicationStatus, "neutral" | "info" | "warning" | "success"
   new: "info",
   in_review: "gold",
   documents_required: "warning",
+  payment_pending: "warning",
   submitted: "info",
   approved: "success",
   completed: "success",

@@ -605,3 +605,44 @@ Migration 0018 is **NOT applied** anywhere. The staging run waits for owner appr
 - Operators can read the registry (kept from 13.1).
 - Corrections can be recorded more than once per item.
 - A host retired and then reactivated keeps its row. Re-adding a deleted-looking host is not possible (host is the key), which is intended.
+
+## Manual payment system (local, unapplied)
+
+Migration `0019_manual_payments.sql` is **NOT applied**. Production and the live project are untouched. Tests run on PGlite only.
+
+### Flow
+1. The customer picks an approved request and a method the owner offers (USDT, BaridiMob or RedotPay), and sees the instructions for their language.
+2. The customer transfers outside the platform and uploads a proof (PDF, JPEG or PNG, 10 MB max) to their own request folder.
+3. `submit_payment_evidence` creates a payment in `pending_review`, takes the amount from the service, and moves the request to `payment_pending`.
+4. The owner opens the proof through a short-lived link, then confirms with `decide_payment` (funds actually received) or rejects with a reason. A rejection returns the request to `approved`, so a new proof can be sent.
+5. Every step writes to `payment_audit`, which is append-only and records the actor, the time and the reason.
+
+### Guarantees (database)
+- Nothing becomes `received` except through `decide_payment`, under a row lock. A direct update by anyone, including the owner, is refused for a payment with a proof.
+- A proof and its amount cannot change once submitted. A decided payment is final.
+- One open proof per request (unique index). A paid request refuses a second proof.
+- Clients have no direct write path to payments, requests, method settings or the audit.
+- A proof that a payment refers to cannot be deleted from storage, by the customer or the owner.
+- The owner's method settings change only through `save_payment_method`, which needs a reason and complete instructions in French, English and Arabic.
+
+### Changed application code
+- Domain: `payment_pending` status, `usdt` and `redotpay` methods, self-service method list, proof fields on payments.
+- `lib/payments/rules.ts` (proof checks, offered methods, decisions), `lib/payments/load.ts` (settings and signed proof links, server only).
+- `lib/actions/payments.ts`: customer submit, owner decide, owner save settings. Database refusals map to codes, and their messages never reach the visitor.
+- Customer request page: `PaymentPanel`, shown only while the request is open for payment.
+- Admin application page: proof link and decision form per proof. The "mark received" and "mark cancelled" buttons are hidden for proof-bearing payments.
+- Admin payments page: methods, availability and instructions, with a reason.
+
+### Tests
+- `tests/db/manual-payments.test.ts` (27): applies on the base schema alone; owner and customer access; submission rules; the decision flow; guards; rejection and resubmission; paid requests; audit; storage protection.
+- `tests/payments/rules.test.ts` (8), `tests/actions/payments-actions.test.ts` (20).
+- Migration chain and manifest suites updated to include 0019.
+- `npm run verify` passes: 1,157 tests, lint with zero warnings, typecheck, production build.
+
+### Remaining risks
+- Not tested in a browser. The screens are type-checked and built, but not clicked through.
+- Concurrency is tested sequentially: PGlite runs one connection. The row lock and unique index are designed for concurrent sessions, but that is unproven until a staging run on Postgres.
+- `payments_read` shows a customer the whole payment row, including the owner's ID (`verified_by`) and the decision reason. A narrower view would hide the owner's ID.
+- A proof uploaded but never submitted stays in the customer's folder. It is not linked to a payment and can be deleted.
+- Legacy owner-recorded payments without a proof can still be marked received directly, as before.
+- Payment settings are stored, not versioned: only the audit keeps the history of changes.
