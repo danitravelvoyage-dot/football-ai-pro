@@ -21,8 +21,13 @@
 | Admin services and prices | Yes | unit | no |
 | Admin reports and CSV export, formula-safe | Yes | unit | no |
 | Admin customer email log and retry | Yes | unit, database | no |
-| Customer emails (nine flows plus two auth flows) | Yes | unit, database | no (no SMTP configured) |
+| Customer emails (seven app flows plus two Supabase Auth flows) | Yes | unit, database | no (no SMTP configured) |
 | WhatsApp: click-to-chat links, manual contact, prefilled messages | Yes | unit (link builder), browser | no (number unconfirmed) |
+| Lead qualification on real requests (rules, reasons, next step, follow-up due) | Yes | unit, admin browser (fake API) | no |
+| Document checklist per service (admin and customer) | Yes | unit, admin browser (fake API) | no |
+| Admin pagination and customer search | Yes | unit, admin browser (fake API) | no |
+| Admin dark and light themes | Yes | unit, admin browser (contrast measured) | no |
+| Unknown service URLs answer 404 | Yes | browser smoke | no |
 | Payment workflow | **Removed** | tests check it is gone | no |
 | Content security policy (nonce, report-only) | Yes | unit, browser | no |
 | Open-redirect protection | Yes | unit | no |

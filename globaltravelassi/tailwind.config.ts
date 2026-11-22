@@ -1,5 +1,14 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Theme roles. Background, text and border colors of the navy scale (and bg-white) read CSS variables, so the admin
+ * area can switch to a dark theme by redefining them (app/globals.css, [data-theme="dark"]). The variables default to
+ * the exact palette below, so nothing changes where the dark theme is not applied.
+ */
+const NAVY_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
+const navyRole = (role: "bg" | "text" | "line") =>
+  Object.fromEntries(NAVY_SHADES.map((shade) => [shade, `rgb(var(--navy-${role}-${shade}) / <alpha-value>)`]));
+
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
@@ -43,6 +52,10 @@ const config: Config = {
           300: "#cfd4de",
         },
       },
+      backgroundColor: { navy: navyRole("bg"), white: "rgb(var(--surface) / <alpha-value>)" },
+      textColor: { navy: navyRole("text") },
+      borderColor: { navy: navyRole("line") },
+      ringColor: { navy: navyRole("line") },
       fontFamily: {
         sans: ["var(--font-body)", "Cairo", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "Georgia", "serif"],

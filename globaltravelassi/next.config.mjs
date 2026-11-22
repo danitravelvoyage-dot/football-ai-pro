@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The admin browser test builds a separate copy into .next-qa (tests/browser/admin.mjs), so it never overwrites the
+  // normal build. Unset in every real environment.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
   poweredByHeader: false,

@@ -6,20 +6,34 @@ import { formMessages } from "@/lib/validation/messages";
 import { setCustomerActiveAction } from "@/lib/actions/admin";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { Panel, DataTable } from "@/components/admin/AdminUI";
+import { Pagination } from "@/components/admin/Pagination";
 import { Badge } from "@/components/ui";
+import { parsePage } from "@/lib/pagination";
 
 export const metadata: Metadata = { title: "Customers", robots: { index: false, follow: false } };
 
-export default async function CustomersPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function CustomersPage({ params, searchParams }: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
   const locale = raw as Locale;
   const dict = getDictionary(locale);
   const t = dict.admin.customersPage;
-  const customers = await getAdminCustomers();
+  const f = await searchParams;
+  const q = f.q ?? "";
+  const { rows: customers, info } = await getAdminCustomers({ q, page: parsePage(f.page) });
 
   return (
-    <Panel title={`${t.title} (${customers.length})`}>
+    <Panel title={`${t.title} (${info.total})`}>
+      <form method="get" className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="block flex-1">
+          <span className="sr-only">{dict.common.search}</span>
+          <input name="q" defaultValue={q} placeholder={dict.common.search} className="w-full rounded-2xl border border-navy-200 bg-white px-4 py-3 text-base outline-none focus:border-gold-500 focus:ring-4 focus:ring-gold-300/40" />
+        </label>
+        <button type="submit" className="min-h-12 rounded-full bg-navy-900 px-6 py-3 font-semibold text-white hover:bg-navy-800">{dict.admin.applicationsPage.filter}</button>
+      </form>
       {customers.length === 0 ? (
         <p className="text-sm text-navy-600">{t.empty}</p>
       ) : (
@@ -59,6 +73,7 @@ export default async function CustomersPage({ params }: { params: Promise<{ loca
           ))}
         </DataTable>
       )}
+      <Pagination info={info} basePath={`/${locale}/admin/customers`} params={{ q }} dict={dict} />
     </Panel>
   );
 }

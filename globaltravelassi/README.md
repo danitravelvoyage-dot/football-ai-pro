@@ -8,7 +8,7 @@ Website, customer area and admin dashboard for GLOBALTRAVELASSI, a visa and trav
 - Sign-up, sign-in, password reset (Supabase Auth).
 - Customer area: create a service request, upload documents to private storage, follow the status and timeline, contact the team on WhatsApp.
 - Admin dashboard: request list with filters, request detail with status, notes, documents, CRM (lead source, customer category, contact log, internal activity), statistics, customer list, services and prices, CSV export, customer email log.
-- Ten transactional customer emails (see `docs/EMAIL_NOTIFICATIONS.md`).
+- Nine customer emails: seven sent by the app and two (sign-up confirmation, password reset) sent by Supabase Auth. See `docs/EMAIL_NOTIFICATIONS.md`.
 
 There is **no payment workflow**. Prices are shown as "price on request" unless the owner sets one. There is no payment gateway, no payment proof upload and no automatic payment confirmation.
 

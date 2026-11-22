@@ -1,5 +1,7 @@
 # Staging execution plan for migrations 0002 to 0019
 
+> **Superseded.** The current staging steps are in [`STAGING_RUNBOOK.md`](STAGING_RUNBOOK.md) and the customer launch order in [`../MIGRATIONS.md`](../MIGRATIONS.md). This plan covered the deferred AI back office and the removed payment workflow, and links a document that was deleted with it.
+
 **Status: planned, nothing executed.** Migration 0018 and the migrations it depends on wait for the owner's approval. Production is out of scope.
 
 

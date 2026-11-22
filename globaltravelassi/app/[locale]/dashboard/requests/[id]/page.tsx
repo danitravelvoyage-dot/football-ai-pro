@@ -12,7 +12,9 @@ import { whatsappLink } from "@/lib/config";
 import { ActionForm } from "@/components/forms/ActionForm";
 import { DocumentUploader } from "@/components/DocumentUploader";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ChecklistList } from "@/components/admin/LeadInsights";
 import { Alert, Badge, Card, ButtonLink } from "@/components/ui";
+import { CLOSED_STATUSES, documentChecklist } from "@/lib/crm/insights";
 
 export const metadata: Metadata = { title: "Request", robots: { index: false, follow: false } };
 
@@ -46,6 +48,8 @@ export default async function RequestPage({
   const editable = documentsEditableStatuses.includes(status as ApplicationStatus);
   const wa = whatsappLink(`${dict.dashboard.whatsappMessage} ${app.reference}`);
   const typeLabels = dict.docTypes as Record<string, string>;
+  const checklist = documentChecklist(app.services?.category, documents);
+  const showChecklist = checklist.items.length > 0 && !CLOSED_STATUSES.includes(status);
 
   const eventText = (e: (typeof timeline)[number]) => {
     if (e.kind === "created") return dict.apply.successTitle;
@@ -101,6 +105,14 @@ export default async function RequestPage({
               </ul>
             )}
           </Card>
+
+          {showChecklist && (
+            <Card>
+              <h2 className="font-display text-2xl text-navy-900">{dict.insights.customerChecklistTitle}</h2>
+              <p className="mt-2 text-sm text-navy-600">{dict.insights.customerChecklistNote}</p>
+              <div className="mt-4"><ChecklistList checklist={checklist} dict={dict} /></div>
+            </Card>
+          )}
 
           <Card>
             <h2 className="font-display text-2xl text-navy-900">{dict.dashboard.uploadTitle}</h2>

@@ -1,5 +1,7 @@
 # Administrator guide (no programming needed)
 
+> **Historical, 19 November 2026.** This guide describes the first version, including payment tracking, which has since been removed. The current guide is [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md).
+
 Sign in at **yourdomain.com/ar/auth/login** (or `/fr/`, `/en/`). Your account must have the administrator role (see DEPLOYMENT.md, step 5). The **Admin** button appears in the admin area after sign-in. Switch language with AR / FR / EN at the top of the page.
 
 ## 1. Overview

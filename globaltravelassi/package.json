@@ -12,6 +12,7 @@
     "test": "vitest run",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
     "test:browser": "node tests/browser/smoke.mjs",
+    "test:admin-browser": "node tests/browser/admin.mjs",
     "test:local-model": "vitest run tests/local"
   },
   "dependencies": {

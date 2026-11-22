@@ -6,8 +6,12 @@ import { getAdminApplications } from "@/lib/queries";
 import { applicationStatuses, customerCategories, leadSources } from "@/lib/domain";
 import { serviceTitle } from "@/lib/catalog";
 import { Panel, DataTable } from "@/components/admin/AdminUI";
+import { Pagination } from "@/components/admin/Pagination";
+import { PriorityBadge } from "@/components/admin/LeadInsights";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Alert } from "@/components/ui";
+import { qualifyLead } from "@/lib/crm/insights";
+import { parsePage } from "@/lib/pagination";
 
 export const metadata: Metadata = { title: "Applications", robots: { index: false, follow: false } };
 
@@ -18,7 +22,7 @@ export default async function ApplicationsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ status?: string; group?: string; source?: string; locale?: string; category?: string; q?: string; deleted?: string }>;
+  searchParams: Promise<{ status?: string; group?: string; source?: string; locale?: string; category?: string; q?: string; deleted?: string; page?: string }>;
 }) {
   const { locale: raw } = await params;
   if (!isLocale(raw)) notFound();
@@ -35,16 +39,17 @@ export default async function ApplicationsPage({
     category: f.category ?? "",
     q: f.q ?? "",
   };
-  const rows = await getAdminApplications(filters);
+  const { rows, info } = await getAdminApplications(filters, parsePage(f.page));
+  const now = new Date();
 
   return (
     <div className="space-y-6">
       {f.deleted === "1" && <Alert tone="success">{dict.admin.detail.deleted}</Alert>}
-      <Panel title={`${t.title} (${rows.length})`}>
+      <Panel title={`${t.title} (${info.total})`}>
         <form method="get" className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6 sm:items-end">
           <label className="block sm:col-span-2 xl:col-span-2">
             <span className="sr-only">{t.search}</span>
-            <input name="q" defaultValue={filters.q} placeholder={t.search} className="w-full rounded-2xl border border-navy-200 px-4 py-3 text-base outline-none focus:border-gold-500 focus:ring-4 focus:ring-gold-300/40" />
+            <input name="q" defaultValue={filters.q} placeholder={t.search} className="w-full rounded-2xl border border-navy-200 bg-white px-4 py-3 text-base outline-none focus:border-gold-500 focus:ring-4 focus:ring-gold-300/40" />
           </label>
           <FilterSelect name="group" label={c.filterGroup} value={filters.group} all={dict.common.all}
             options={GROUPS.map((g) => ({ value: g, label: c.groupNames[g] }))} />
@@ -62,25 +67,33 @@ export default async function ApplicationsPage({
         {rows.length === 0 ? (
           <p className="text-sm text-navy-600">{t.empty}</p>
         ) : (
-          <DataTable head={[t.reference, t.customer, t.service, c.leadSource, t.submitted, ""]}>
-            {rows.map((r) => (
-              <tr key={r.id} className="align-top hover:bg-navy-50/50">
-                <td className="px-4 py-3">
-                  <Link href={`/${locale}/admin/applications/${r.id}`} className="font-mono font-semibold text-navy-900 hover:text-gold-600" dir="ltr">{r.reference}</Link>
-                  <div className="mt-1"><StatusBadge status={r.status} dict={dict} /></div>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="font-semibold text-navy-900">{r.full_name}</p>
-                  <p className="text-xs text-navy-500" dir="ltr">{r.email}</p>
-                </td>
-                <td className="px-4 py-3">{r.services ? serviceTitle(r.services, locale) : "—"}</td>
-                <td className="px-4 py-3 text-navy-800">{r.lead_source ? c.leadSources[r.lead_source] : c.leadSources.not_recorded}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{formatDate(r.created_at, locale)}</td>
-                <td className="px-4 py-3"><Link href={`/${locale}/admin/applications/${r.id}`} className="font-semibold text-gold-600 hover:text-gold-500">{dict.common.view} →</Link></td>
-              </tr>
-            ))}
+          <DataTable head={[t.reference, t.customer, t.service, dict.insights.priority, c.leadSource, t.submitted, ""]}>
+            {rows.map((r) => {
+              const q = qualifyLead({ ...r, category: r.services?.category, documents: r.documents ?? [] }, now);
+              return (
+                <tr key={r.id} className="align-top hover:bg-navy-50/50">
+                  <td className="px-4 py-3">
+                    <Link href={`/${locale}/admin/applications/${r.id}`} className="font-mono font-semibold text-navy-900 hover:text-gold-600" dir="ltr">{r.reference}</Link>
+                    <div className="mt-1"><StatusBadge status={r.status} dict={dict} /></div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-navy-900">{r.full_name}</p>
+                    <p className="text-xs text-navy-500" dir="ltr">{r.email}</p>
+                  </td>
+                  <td className="px-4 py-3">{r.services ? serviceTitle(r.services, locale) : "—"}</td>
+                  <td className="px-4 py-3">
+                    <PriorityBadge tier={q.tier} dict={dict} />
+                    {q.followUpDue && <p className="mt-1 text-xs font-semibold text-amber-700">{dict.insights.followUpDue}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-navy-800">{r.lead_source ? c.leadSources[r.lead_source] : c.leadSources.not_recorded}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(r.created_at, locale)}</td>
+                  <td className="px-4 py-3"><Link href={`/${locale}/admin/applications/${r.id}`} className="font-semibold text-gold-600 hover:text-gold-500">{dict.common.view} →</Link></td>
+                </tr>
+              );
+            })}
           </DataTable>
         )}
+        <Pagination info={info} basePath={`/${locale}/admin/applications`} params={filters} dict={dict} />
       </Panel>
     </div>
   );

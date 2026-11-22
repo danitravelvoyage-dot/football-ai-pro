@@ -4,6 +4,7 @@ import { refreshSession, type SessionRefresh } from "@/lib/supabase/middleware";
 import { isSupabaseConfigured, siteConfig } from "@/lib/config";
 import { buildCsp, CSP_REPORT_ONLY_HEADER, generateNonce } from "@/lib/security/csp";
 import { classifyLeadSource, encodeAttribution, LEAD_SOURCE_COOKIE, LEAD_SOURCE_COOKIE_MAX_AGE } from "@/lib/attribution/lead-source";
+import { isServiceSlug, servicePageSlug } from "@/lib/service-slugs";
 
 /** Pages that need a signed-in user. Role checks happen in the page/route as well. */
 const PROTECTED = /^\/(ar|fr|en)\/(dashboard|apply|admin|documents)(\/|$)/;
@@ -85,6 +86,17 @@ async function handleRequest(request: NextRequest, csp: string): Promise<NextRes
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-locale", first);
   requestHeaders.set("Content-Security-Policy", csp);
+
+  // 4. An unknown service slug must answer 404. The page itself streams (the locale segment has a loading screen), so
+  //    a notFound() there would arrive after a 200 status. Rewriting to a path no route matches makes Next.js answer
+  //    404 before rendering, with the localized not-found page.
+  const serviceSlug = servicePageSlug(pathname);
+  if (serviceSlug !== null && !isServiceSlug(serviceSlug)) {
+    const missing = request.nextUrl.clone();
+    missing.pathname = `/${first}/__not-found`;
+    return withCookies(NextResponse.rewrite(missing, { request: { headers: requestHeaders } }), session);
+  }
+
   return withCookies(NextResponse.next({ request: { headers: requestHeaders } }), session);
 }
 

@@ -131,11 +131,18 @@ async function main() {
       }
       check(`all ${serviceSlugs.length} service pages render in en, fr and ar (RTL, one h1, meta description, no errors)`, serviceProblems.length === 0, serviceProblems.slice(0, 3).join(" | ") || "ok");
 
-      // An unknown slug must not show a service page. (Next streams this page after its loading boundary, so the
-      // status can be 200 with the not-found content; the content is what is checked here.)
+      // An unknown slug must answer 404 with the localized not-found page, never a service page. The middleware
+      // rejects it before rendering (lib/service-slugs.ts), so the status is a real 404.
       const unknown = await fetch(`${base}/en/services/not-a-service`, { redirect: "manual" });
       const unknownBody = await unknown.text();
-      check("an unknown service slug shows no service page", !unknownBody.includes("Request this service") && !unknownBody.includes("What is included"), `status ${unknown.status}`);
+      check(
+        "an unknown service slug answers 404 with the not-found page",
+        unknown.status === 404 && unknownBody.includes("Page not found") && !unknownBody.includes("Request this service") && !unknownBody.includes("What is included"),
+        `status ${unknown.status}`,
+      );
+      const unmatched = await fetch(`${base}/fr/does-not-exist`, { redirect: "manual" });
+      const unmatchedBody = await unmatched.text();
+      check("an unmatched URL answers 404 in the visitor's language", unmatched.status === 404 && unmatchedBody.includes("Page introuvable"), `status ${unmatched.status}`);
 
       // Legal and trust pages in every language.
       const legalProblems = [];

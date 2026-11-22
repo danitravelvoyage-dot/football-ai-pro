@@ -38,6 +38,7 @@ export function formMessages(dict: Dict): Record<string, string> {
     document_removed: dict.dashboard.removeDoc,
     status_saved: dict.admin.detail.statusSaved,
     note_saved: dict.admin.detail.addNote,
+    contact_saved: dict.crm.contactSaved,
     application_deleted: dict.admin.detail.deleted,
     service_saved: dict.admin.servicesPage.saved,
     profile_saved: dict.dashboard.profileSaved,

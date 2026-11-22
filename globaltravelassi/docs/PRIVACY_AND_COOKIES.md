@@ -20,6 +20,7 @@ This file is for the team. The public text is in `lib/legal/content.ts` (privacy
 |---|---|---|---|
 | Supabase session cookies | sign-in | until sign-out or expiry | the session token; needed |
 | `gta_lead_source` | records the channel of the first visit (`tiktok`, `instagram`, `facebook`, `google`, `whatsapp`, `direct`, `other`) and a campaign tag if one was given | 30 days, httpOnly, SameSite=Lax | no |
+| `gta_admin_theme` | remembers an administrator's light or dark choice in the admin dashboard; set only when a team member uses the theme switch, never for visitors | 1 year, SameSite=Lax | no |
 
 No advertising cookie, no third-party analytics and no tracking pixel is used.
 

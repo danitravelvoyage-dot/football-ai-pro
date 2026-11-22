@@ -7,7 +7,43 @@
   --navy-deep: #050d1b;
   --navy: #0e2140;
   --gold: #c9a24b;
+
+  /* Theme roles (see tailwind.config.ts). Defaults are the navy palette, so the public site is unchanged. */
+  --surface: 255 255 255;
+  --navy-bg-50: 238 242 248;  --navy-text-50: 238 242 248;  --navy-line-50: 238 242 248;
+  --navy-bg-100: 213 222 236; --navy-text-100: 213 222 236; --navy-line-100: 213 222 236;
+  --navy-bg-200: 170 187 217; --navy-text-200: 170 187 217; --navy-line-200: 170 187 217;
+  --navy-bg-300: 127 152 198; --navy-text-300: 127 152 198; --navy-line-300: 127 152 198;
+  --navy-bg-400: 79 111 168;  --navy-text-400: 79 111 168;  --navy-line-400: 79 111 168;
+  --navy-bg-500: 47 79 134;   --navy-text-500: 47 79 134;   --navy-line-500: 47 79 134;
+  --navy-bg-600: 31 59 107;   --navy-text-600: 31 59 107;   --navy-line-600: 31 59 107;
+  --navy-bg-700: 21 45 85;    --navy-text-700: 21 45 85;    --navy-line-700: 21 45 85;
+  --navy-bg-800: 14 33 64;    --navy-text-800: 14 33 64;    --navy-line-800: 14 33 64;
+  --navy-bg-900: 8 21 40;     --navy-text-900: 8 21 40;     --navy-line-900: 8 21 40;
+  --navy-bg-950: 5 13 27;     --navy-text-950: 5 13 27;     --navy-line-950: 5 13 27;
 }
+
+/*
+ * Admin dark theme. Applied to the admin area only (app/[locale]/admin/layout.tsx), never to the public site.
+ * Light surfaces turn dark and dark text turns light. The darkest background (hero headers) stays dark and the darkest
+ * text (on gold buttons) stays dark, so white and gold text on those keeps its contrast. Primary buttons (navy 800/900)
+ * become a mid blue so they stay visible on dark panels.
+ */
+.admin-theme[data-theme="dark"] {
+  color-scheme: dark;
+  background-color: rgb(7 15 30);
+  color: rgb(222 229 242);
+  --surface: 12 22 40;
+  --navy-bg-50: 17 30 52;   --navy-bg-100: 27 42 69;  --navy-bg-200: 38 56 90;  --navy-bg-300: 58 80 120;
+  --navy-bg-600: 39 70 120; --navy-bg-700: 47 85 146; --navy-bg-800: 43 75 128; --navy-bg-900: 35 64 111;
+  --navy-text-500: 156 175 209; --navy-text-600: 178 194 222; --navy-text-700: 203 214 234;
+  --navy-text-800: 222 229 242; --navy-text-900: 238 242 248;
+  --navy-line-50: 22 36 60; --navy-line-100: 30 46 74; --navy-line-200: 45 64 98; --navy-line-300: 62 84 124;
+}
+.admin-theme[data-theme="light"] { color-scheme: light; }
+
+/* The customer WhatsApp button is for visitors. In the admin area it only covers controls (pagination, forms). */
+body:has([data-admin-root]) .whatsapp-float { display: none; }
 
 html {
   scroll-behavior: smooth;

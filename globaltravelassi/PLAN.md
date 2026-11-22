@@ -1,5 +1,7 @@
 # GLOBALTRAVELASSI — Development Plan
 
+> **Historical, 18–19 November 2026.** The original plan. Payments, organised European trips and the five-service list were later changed; see `docs/FINAL_TECHNICAL_REPORT.md` and `docs/final/GLOBALTRAVELASSI_FINAL_COMPLETION_REPORT.md`.
+
 ## 1. Requirements analysis
 - Brand: GLOBALTRAVELASSI travel & visa consulting (Algeria / North Africa). Platform name: GLOBALTRAVELASSI.
 - Languages: Arabic (RTL, default), French, English. Every public and admin label is translated.

@@ -37,9 +37,19 @@ describe.skipIf(!LIVE)("real local model inference (opt-in)", () => {
     expect(raw.text.length).toBeGreaterThan(0);
 
     // Would the first reply pass the agent's contract? Checked with the same parser and schema the runtime uses.
+    // This step only reports: a reply that is not JSON at all (for example cut off at the token limit) is recorded,
+    // not thrown. The runtime step below is where a bad reply must be refused.
     const { parseJsonLoose } = await import("@/lib/ai/runtime");
-    const contract = getAgent("MarketResearchAgent").outputSchema.safeParse(parseJsonLoose(raw.text));
-    console.log("REAL LOCAL MODEL RAW REPLY CONTRACT", JSON.stringify({ passesContract: contract.success, issues: contract.success ? [] : contract.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) }));
+    let passesContract = false;
+    let issues: string[] = [];
+    try {
+      const contract = getAgent("MarketResearchAgent").outputSchema.safeParse(parseJsonLoose(raw.text));
+      passesContract = contract.success;
+      issues = contract.success ? [] : contract.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+    } catch (error) {
+      issues = [error instanceof Error ? error.message : String(error)];
+    }
+    console.log("REAL LOCAL MODEL RAW REPLY CONTRACT", JSON.stringify({ passesContract, issues }));
 
     // 2. The same request through the agent runtime, which validates the reply against the agent's contract.
     // The gateway is wrapped so the raw text of this reply is recorded even when validation rejects it.

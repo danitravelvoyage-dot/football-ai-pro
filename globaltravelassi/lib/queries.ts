@@ -5,6 +5,7 @@ import type {
 } from "@/lib/domain";
 import { applicationStatuses, leadSources, normalizeStatus } from "@/lib/domain";
 import { isSupabaseConfigured } from "@/lib/config";
+import { pageInfo, pageRange, searchTerm, type PageInfo } from "@/lib/pagination";
 
 export type ApplicationListItem = ApplicationRow & {
   services: Pick<ServiceRow, "title_ar" | "title_fr" | "title_en" | "category" | "price" | "currency"> | null;
@@ -197,13 +198,20 @@ export interface ApplicationFilters {
   q?: string;
 }
 
-export async function getAdminApplications(filters: ApplicationFilters): Promise<ApplicationListItem[]> {
+/** A request in the admin list, with its documents' types: enough to compute the lead priority and checklist. */
+export type AdminApplicationListItem = ApplicationListItem & { documents: Pick<DocumentRow, "doc_type" | "verified">[] | null };
+
+export async function getAdminApplications(
+  filters: ApplicationFilters,
+  page = 1,
+): Promise<{ rows: AdminApplicationListItem[]; info: PageInfo }> {
   const supabase = await createServerSupabase();
+  const { from, to } = pageRange(page);
   let query = supabase
     .from("applications")
-    .select(`*, ${serviceFields}, profiles(full_name, email)`)
+    .select(`*, ${serviceFields}, profiles(full_name, email), documents(doc_type, verified)`, { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(200);
+    .range(from, to);
   if (filters.status && (applicationStatuses as readonly string[]).includes(filters.status)) {
     query = query.eq("status", filters.status);
   } else if (filters.group) {
@@ -214,16 +222,17 @@ export async function getAdminApplications(filters: ApplicationFilters): Promise
   else if (filters.source && (leadSources as readonly string[]).includes(filters.source)) query = query.eq("lead_source", filters.source);
   if (filters.locale && ["ar", "fr", "en"].includes(filters.locale)) query = query.eq("locale", filters.locale);
   if (filters.category && ["standard", "priority", "returning", "corporate"].includes(filters.category)) query = query.eq("customer_category", filters.category);
-  if (filters.q && filters.q.trim()) {
-    const term = filters.q.trim().replace(/[%,()]/g, " ");
+  const term = searchTerm(filters.q);
+  if (term) {
     query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,reference.ilike.%${term}%`);
   }
-  const { data, error } = await query;
+  const { data, error, count } = await query;
   if (error) {
     console.error("getAdminApplications failed", error.code);
-    return [];
+    return { rows: [], info: pageInfo(page, 0, 0) };
   }
-  return (data ?? []) as ApplicationListItem[];
+  const rows = (data ?? []) as AdminApplicationListItem[];
+  return { rows, info: pageInfo(page, count ?? rows.length, rows.length) };
 }
 
 export async function getAdminApplicationDetail(id: string) {
@@ -257,12 +266,21 @@ export async function getAdminApplicationDetail(id: string) {
 
 // ---------- Admin: customers -------------------------------------------------
 
-export async function getAdminCustomers(): Promise<(ProfileRow & { requestCount: number; sources: string[] })[]> {
+export async function getAdminCustomers(
+  options: { q?: string; page?: number } = {},
+): Promise<{ rows: (ProfileRow & { requestCount: number; sources: string[] })[]; info: PageInfo }> {
   const supabase = await createServerSupabase();
-  const [profiles, apps] = await Promise.all([
-    supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(500),
-    supabase.from("applications").select("user_id, lead_source").limit(5000),
-  ]);
+  const page = options.page ?? 1;
+  const { from, to } = pageRange(page);
+  let profileQuery = supabase.from("profiles").select("*", { count: "exact" }).order("created_at", { ascending: false }).range(from, to);
+  const term = searchTerm(options.q);
+  if (term) profileQuery = profileQuery.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,whatsapp.ilike.%${term}%`);
+  const profiles = await profileQuery;
+  const pageRows = (profiles.data ?? []) as ProfileRow[];
+  // Request counts for the customers on this page only.
+  const apps = pageRows.length
+    ? await supabase.from("applications").select("user_id, lead_source").in("user_id", pageRows.map((p) => p.id)).limit(5000)
+    : { data: [] };
   const counts = new Map<string, number>();
   const sources = new Map<string, Set<string>>();
   for (const row of (apps.data ?? []) as { user_id: string; lead_source: string | null }[]) {
@@ -272,11 +290,13 @@ export async function getAdminCustomers(): Promise<(ProfileRow & { requestCount:
       sources.get(row.user_id)!.add(row.lead_source);
     }
   }
-  return ((profiles.data ?? []) as ProfileRow[]).map((p) => ({
+  const rows = pageRows.map((p) => ({
     ...p,
     requestCount: counts.get(p.id) ?? 0,
     sources: [...(sources.get(p.id) ?? [])],
   }));
+  if (profiles.error) console.error("getAdminCustomers failed", profiles.error.code);
+  return { rows, info: pageInfo(page, profiles.count ?? rows.length, rows.length) };
 }
 
 /** Customers counted by the lead source of their requests. A customer with requests from two sources counts in both. */

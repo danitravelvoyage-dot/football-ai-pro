@@ -17,7 +17,7 @@ export interface LegalPage {
   sections: LegalSection[];
 }
 
-export const LEGAL_UPDATED = "2026-11-21";
+export const LEGAL_UPDATED = "2026-11-22";
 
 type Pages = Record<"privacy" | "terms" | "cookies", LegalPage>;
 
@@ -123,6 +123,10 @@ const ar: Pages = {
         paragraphs: ["عند أول زيارة لك، نحفظ ملفًا باسم gta_lead_source يذكر القناة التي وصلت منها (مثل تيك توك أو إنستغرام أو فيسبوك أو غوغل أو واتساب أو الزيارة المباشرة أو غيرها) وقيمة وسم الحملة إن وُجدت. مدته 30 يومًا، ولا يحمل معلومات شخصية. يساعدنا لنعرف أي قنوات تجلب طلبات فعلية. إن رفضت هذا الملف، يُسجَّل مصدر طلبك كـ\"غير ذلك\" ولن يؤثر ذلك على استخدامك للموقع."],
       },
       {
+        heading: "تفضيل مظهر لوحة الإدارة",
+        paragraphs: ["عندما يختار أحد أعضاء الفريق المظهر الفاتح أو الداكن في لوحة الإدارة، نحفظ ملفًا باسم gta_admin_theme يتذكر هذا الاختيار. لا يُستعمل إلا في لوحة الإدارة، ومدته سنة واحدة، ولا يحمل معلومات شخصية. لا يُنشأ هذا الملف لزوار الموقع."],
+      },
+      {
         heading: "ما لا نستخدمه",
         paragraphs: ["لا نستخدم ملفات إعلانية ولا أدوات تحليل لطرف ثالث تتبع تصفحك عبر المواقع."],
       },
@@ -186,6 +190,7 @@ const fr: Pages = {
     sections: [
       { heading: "Cookies nécessaires à la connexion", paragraphs: ["Les cookies de session Supabase conservent votre état de connexion. Ils sont supprimés à la déconnexion ou à l’expiration. Sans eux, la connexion ne fonctionne pas."] },
       { heading: "Cookie de source de la demande", paragraphs: ["Lors de votre première visite, nous enregistrons un cookie nommé gta_lead_source qui indique le canal d’arrivée (TikTok, Instagram, Facebook, Google, WhatsApp, accès direct ou autre) et la valeur d’une balise de campagne le cas échéant. Il dure 30 jours et ne contient aucune information personnelle. Il nous aide à savoir quels canaux apportent de vraies demandes. Si vous le refusez ou le bloquez, la source de votre demande est enregistrée comme « autre », sans effet sur l’usage du site."] },
+      { heading: "Préférence d’affichage de l’espace d’administration", paragraphs: ["Lorsqu’un membre de l’équipe choisit le thème clair ou sombre dans l’espace d’administration, nous enregistrons un cookie nommé gta_admin_theme qui retient ce choix. Il ne sert que dans l’espace d’administration, dure un an et ne contient aucune information personnelle. Il n’est jamais créé pour les visiteurs du site."] },
       { heading: "Ce que nous n’utilisons pas", paragraphs: ["Aucun cookie publicitaire ni outil d’analyse tiers suivant votre navigation d’un site à l’autre."] },
     ],
   },
@@ -247,6 +252,7 @@ const en: Pages = {
     sections: [
       { heading: "Cookies needed to sign in", paragraphs: ["Supabase session cookies keep you signed in. They are removed when you sign out or when they expire. Without them, sign-in does not work."] },
       { heading: "Request source cookie", paragraphs: ["On your first visit we store a cookie named gta_lead_source that records the channel you arrived from (TikTok, Instagram, Facebook, Google, WhatsApp, direct visit or other) and the value of a campaign tag, if there was one. It lasts 30 days and holds no personal information. It helps us see which channels bring real requests. If you decline or block it, the source of your request is recorded as “other”, and the rest of the site works as normal."] },
+      { heading: "Admin dashboard display preference", paragraphs: ["When a team member chooses the light or dark theme in the admin dashboard, we store a cookie named gta_admin_theme that remembers the choice. It is used only in the admin dashboard, lasts one year and holds no personal information. It is never set for visitors to the site."] },
       { heading: "What we do not use", paragraphs: ["No advertising cookies and no third-party analytics that follow your browsing across sites."] },
     ],
   },

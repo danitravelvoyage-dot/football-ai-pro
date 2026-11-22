@@ -14,8 +14,10 @@ import {
 import { ActionForm } from "@/components/forms/ActionForm";
 import { SelectField, TextAreaField, TextField } from "@/components/forms/Fields";
 import { Panel } from "@/components/admin/AdminUI";
+import { ChecklistList, QualificationSummary } from "@/components/admin/LeadInsights";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge, Card } from "@/components/ui";
+import { qualifyLead } from "@/lib/crm/insights";
 
 export const metadata: Metadata = { title: "Application", robots: { index: false, follow: false } };
 
@@ -40,6 +42,7 @@ export default async function AdminApplicationPage({ params }: { params: Promise
   const categoryOptions = customerCategories.map((s) => ({ value: s, label: c.categories[s] }));
   const channelOptions = contactChannels.map((s) => ({ value: s, label: c.channels[s] }));
   const sourceLabel = app.lead_source ? c.leadSources[app.lead_source] : c.leadSources.not_recorded;
+  const qualification = qualifyLead({ ...app, category: app.services?.category, documents }, new Date());
 
   return (
     <div className="space-y-8">
@@ -63,6 +66,10 @@ export default async function AdminApplicationPage({ params }: { params: Promise
 
       <div className="grid gap-8 xl:grid-cols-3">
         <div className="space-y-8 xl:col-span-2">
+          <Panel title={dict.insights.qualificationTitle}>
+            <QualificationSummary qualification={qualification} dict={dict} />
+          </Panel>
+
           <Panel title={t.changeStatus}>
             <ActionForm action={updateStatusAction} messages={messages} submitLabel={t.changeStatus} pendingLabel={dict.common.loading} className="grid gap-5 sm:grid-cols-2">
               <input type="hidden" name="applicationId" value={app.id} />
@@ -97,6 +104,11 @@ export default async function AdminApplicationPage({ params }: { params: Promise
                 ))}
               </ul>
             )}
+          </Panel>
+
+          <Panel title={dict.insights.checklistTitle}>
+            <p className="mb-4 text-xs leading-relaxed text-navy-500">{dict.insights.checklistNote}</p>
+            <ChecklistList checklist={qualification.checklist} dict={dict} />
           </Panel>
 
           <Panel title={c.contactTitle}>
